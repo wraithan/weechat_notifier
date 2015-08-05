@@ -1,3 +1,3 @@
-#[test]
-fn it_works() {
-}
+extern crate byteorder;
+extern crate flate2;
+pub mod parser;
