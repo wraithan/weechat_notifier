@@ -1,11 +1,35 @@
+extern crate byteorder;
+extern crate flate2;
+
+#[macro_use]
+pub use errors;
+
 use std::io::Cursor;
 use std::io::prelude::*;
 use byteorder::{ReadBytesExt, BigEndian, Error};
 use flate2::read::ZlibDecoder;
+use errors::WeechatRelayError;
+use errors::ErrorKind::MalformedBinaryParse;
+
+pub fn read_u32(buffer: &[u8]) -> Result<u32, Error> {
+    let mut datum = Cursor::new(buffer);
+    match datum.read_u32::<BigEndian>() {
+        Ok(value) => value,
+        Err(e) => fail!((MalformedBinaryParse, "Could not read big endian unsigned int"))
+    }
+}
+
+pub fn read_i32(buffer: &[u8]) -> Result<i32, Error> {
+    let mut datum = Cursor::new(buffer);
+    datum.read_i32::<BigEndian>()
+}
+
+// pub fn read_string(buffer: &[u8]) -> Result<String, Error> {
+//     read_i32(buffer)
+// }
 
 pub fn get_length (buffer: &[u8]) -> Result<u32, Error> {
-    let mut datum = Cursor::new(buffer);
-    datum.read_u32::<BigEndian>()
+    read_u32(buffer)
 }
 
 pub fn get_compression (buffer: &[u8]) -> Result<bool, String> {

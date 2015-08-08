@@ -1,10 +1,9 @@
-
 use std::error;
 use std::fmt;
 
 #[macro_export]
 macro_rules! fail {
-    ($EXPR:expr) => (
+    ($expr:expr) => (
         return Err(::std::convert::From::from($expr));
     )
 }
@@ -22,7 +21,7 @@ pub enum ErrorRepr {
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum ErrorKind {
-    UnknownType,
+    MalformedBinaryParse
 }
 
 impl WeechatRelayError {
