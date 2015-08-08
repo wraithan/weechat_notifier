@@ -6,9 +6,19 @@ pub mod errors;
 
 use std::io::Cursor;
 use std::io::prelude::*;
+use std::string::String;
 use byteorder::{ReadBytesExt, BigEndian};
 use flate2::read::ZlibDecoder;
 use errors::WeechatParseError;
+
+macro_rules! println_stderr(
+    ($($arg:tt)*) => (
+        match writeln!(&mut ::std::io::stderr(), $($arg)* ) {
+            Ok(_) => {},
+            Err(x) => panic!("Unable to write to stderr: {}", x),
+        }
+    )
+);
 
 pub fn read_u32(buffer: &[u8]) -> Result<u32, WeechatParseError> {
     let mut datum = Cursor::new(buffer);
@@ -26,9 +36,23 @@ pub fn read_i32(buffer: &[u8]) -> Result<i32, WeechatParseError> {
     }
 }
 
-// pub fn read_string(buffer: &[u8]) -> Result<String, Error> {
-//     read_i32(buffer)
-// }
+pub fn read_string(buffer: &[u8]) -> Result<String, WeechatParseError> {
+    match read_u32(buffer) {
+        Ok(size) => {
+            println_stderr!("size {}", size);
+            println_stderr!("const {}", 0xFFFFFFFF as u32);
+            println_stderr!("raw {:?}", &buffer[1..5]);
+            if size == 0xFFFFFFFF as u32 {
+                return Ok("".to_owned())
+            }
+            let length = size as usize;
+            let raw_string = &buffer[5..length];
+            let value = String::from_utf8_lossy(raw_string);
+            Ok(value.into_owned())
+        },
+        Err(error) => fail!(error)
+    }
+}
 
 pub fn get_length (buffer: &[u8]) -> Result<u32, WeechatParseError> {
     read_u32(buffer)
@@ -42,6 +66,10 @@ pub fn get_compression (buffer: &[u8]) -> Result<bool, String> {
     }
 }
 
+pub fn get_message_type (buffer: &[u8]) -> Result<String, WeechatParseError> {
+    read_string(&buffer)
+}
+
 pub fn get_raw_data (buffer: &[u8]) -> Result<Vec<u8>, String> {
     let mut datum = Cursor::new(buffer);
     datum.set_position(5);
@@ -52,15 +80,6 @@ pub fn get_raw_data (buffer: &[u8]) -> Result<Vec<u8>, String> {
         Err(_) => Err("decoding bummer".to_owned())
     }
 }
-
-macro_rules! println_stderr(
-    ($($arg:tt)*) => (
-        match writeln!(&mut ::std::io::stderr(), $($arg)* ) {
-            Ok(_) => {},
-            Err(x) => panic!("Unable to write to stderr: {}", x),
-        }
-    )
-);
 
 #[test]
 fn parse_test_data() {
@@ -88,7 +107,8 @@ fn parse_test_data() {
     //  105, 109, 10, 49, 51, 50, 49, 57, 57, 51, 52, 53, 54, 97, 114, 114, 115,
     //  116, 114, 0, 0, 0, 2, 0, 0, 0, 3, 97, 98, 99, 0, 0, 0, 2, 100, 101, 97, 114,
     //  114, 105, 110, 116, 0, 0, 0, 3, 0, 0, 0, 123, 0, 0, 1, 200, 0, 0, 3, 21]
-    assert!(get_length(&data).unwrap() == 145);
-    assert!(get_compression(&data).unwrap() == true);
-    println_stderr!("got data: {:?}", get_raw_data(&data).unwrap())
+    assert_eq!(get_length(&data).unwrap(), 145);
+    assert_eq!(get_compression(&data).unwrap(), true);
+    let raw_data = get_raw_data(&data).unwrap();
+    assert_eq!(get_message_type(&raw_data).unwrap(), "".to_owned());
 }
