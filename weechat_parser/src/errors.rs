@@ -1,5 +1,7 @@
 use std::error;
+use std::error::Error as coreError;
 use std::fmt;
+use byteorder;
 
 #[macro_export]
 macro_rules! fail {
@@ -8,7 +10,7 @@ macro_rules! fail {
     )
 }
 
-pub struct WeechatRelayError {
+pub struct WeechatParseError {
     repr: ErrorRepr,
 }
 
@@ -24,7 +26,7 @@ pub enum ErrorKind {
     MalformedBinaryParse
 }
 
-impl WeechatRelayError {
+impl WeechatParseError {
     pub fn kind(&self) -> ErrorKind {
         match self.repr {
             ErrorRepr::WithDescription(kind, _) => kind,
@@ -33,8 +35,8 @@ impl WeechatRelayError {
     }
 }
 
-impl PartialEq for WeechatRelayError {
-    fn eq(&self, other: &WeechatRelayError) -> bool {
+impl PartialEq for WeechatParseError {
+    fn eq(&self, other: &WeechatParseError) -> bool {
         match (&self.repr, &other.repr) {
             (&ErrorRepr::WithDescription(kind_a, _),
              &ErrorRepr::WithDescription(kind_b, _)) => {
@@ -49,7 +51,7 @@ impl PartialEq for WeechatRelayError {
     }
 }
 
-impl error::Error for WeechatRelayError {
+impl error::Error for WeechatParseError {
     fn description(&self) -> &str {
         match self.repr {
             ErrorRepr::WithDescription(_, description) => description,
@@ -62,7 +64,7 @@ impl error::Error for WeechatRelayError {
     }
 }
 
-impl fmt::Display for WeechatRelayError {
+impl fmt::Display for WeechatParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self.repr {
             ErrorRepr::WithDescription(_, description) => {
@@ -77,20 +79,28 @@ impl fmt::Display for WeechatRelayError {
     }
 }
 
-impl fmt::Debug for WeechatRelayError {
+impl fmt::Debug for WeechatParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         fmt::Display::fmt(self, f)
     }
 }
 
-impl From<(ErrorKind, &'static str)> for WeechatRelayError {
-    fn from((kind, description): (ErrorKind, &'static str)) -> WeechatRelayError {
-        WeechatRelayError { repr: ErrorRepr::WithDescription(kind, description) }
+impl From<(ErrorKind, &'static str)> for WeechatParseError {
+    fn from((kind, description): (ErrorKind, &'static str)) -> WeechatParseError {
+        WeechatParseError { repr: ErrorRepr::WithDescription(kind, description) }
     }
 }
 
-impl From<(ErrorKind, &'static str, String)> for WeechatRelayError {
-    fn from((kind, description, detail): (ErrorKind, &'static str, String)) -> WeechatRelayError {
-        WeechatRelayError { repr: ErrorRepr::WithDescriptionAndDetail(kind, description, detail) }
+impl From<(ErrorKind, &'static str, String)> for WeechatParseError {
+    fn from((kind, description, detail): (ErrorKind, &'static str, String)) -> WeechatParseError {
+        WeechatParseError { repr: ErrorRepr::WithDescriptionAndDetail(kind, description, detail) }
+    }
+}
+
+impl From<byteorder::Error> for WeechatParseError {
+    fn from (error: byteorder::Error) -> WeechatParseError {
+        WeechatParseError {
+            repr: ErrorRepr::WithDescriptionAndDetail(ErrorKind::MalformedBinaryParse, "failed to parse binary data", error.description().to_owned())
+        }
     }
 }

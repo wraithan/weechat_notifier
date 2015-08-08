@@ -2,33 +2,35 @@ extern crate byteorder;
 extern crate flate2;
 
 #[macro_use]
-pub use errors;
+pub mod errors;
 
 use std::io::Cursor;
 use std::io::prelude::*;
-use byteorder::{ReadBytesExt, BigEndian, Error};
+use byteorder::{ReadBytesExt, BigEndian};
 use flate2::read::ZlibDecoder;
-use errors::WeechatRelayError;
-use errors::ErrorKind::MalformedBinaryParse;
+use errors::WeechatParseError;
 
-pub fn read_u32(buffer: &[u8]) -> Result<u32, Error> {
+pub fn read_u32(buffer: &[u8]) -> Result<u32, WeechatParseError> {
     let mut datum = Cursor::new(buffer);
     match datum.read_u32::<BigEndian>() {
-        Ok(value) => value,
-        Err(e) => fail!((MalformedBinaryParse, "Could not read big endian unsigned int"))
+        Ok(value) => Ok(value),
+        Err(error) => fail!(error)
     }
 }
 
-pub fn read_i32(buffer: &[u8]) -> Result<i32, Error> {
+pub fn read_i32(buffer: &[u8]) -> Result<i32, WeechatParseError> {
     let mut datum = Cursor::new(buffer);
-    datum.read_i32::<BigEndian>()
+    match datum.read_i32::<BigEndian>() {
+        Ok(value) => Ok(value),
+        Err(error) => fail!(error)
+    }
 }
 
 // pub fn read_string(buffer: &[u8]) -> Result<String, Error> {
 //     read_i32(buffer)
 // }
 
-pub fn get_length (buffer: &[u8]) -> Result<u32, Error> {
+pub fn get_length (buffer: &[u8]) -> Result<u32, WeechatParseError> {
     read_u32(buffer)
 }
 
@@ -74,6 +76,18 @@ fn parse_test_data() {
                  98, 6, 19, 16, 51, 3, 21, 129, 152, 41, 169, 64, 97, 144, 163,
                  128, 66, 64, 92, 205, 192, 192, 120, 2, 200, 20, 5, 0, 59, 212,
                  56, 52];
+
+    // uncompressed data blob.
+    // [255, 255, 255, 255, 99, 104, 114, 65, 105, 110, 116, 0, 1, 226, 64, 105,
+    //  110, 116, 255, 254, 29, 192, 108, 111, 110, 10, 49, 50, 51, 52, 53, 54,
+    //  55, 56, 57, 48, 108, 111, 110, 11, 45, 49, 50, 51, 52, 53, 54, 55, 56, 57,
+    //  48, 115, 116, 114, 0, 0, 0, 8, 97, 32, 115, 116, 114, 105, 110, 103, 115,
+    //  116, 114, 0, 0, 0, 0, 115, 116, 114, 255, 255, 255, 255, 98, 117, 102, 0,
+    //  0, 0, 6, 98, 117, 102, 102, 101, 114, 98, 117, 102, 255, 255, 255, 255, 112,
+    //  116, 114, 8, 49, 50, 51, 52, 97, 98, 99, 100, 112, 116, 114, 1, 48, 116,
+    //  105, 109, 10, 49, 51, 50, 49, 57, 57, 51, 52, 53, 54, 97, 114, 114, 115,
+    //  116, 114, 0, 0, 0, 2, 0, 0, 0, 3, 97, 98, 99, 0, 0, 0, 2, 100, 101, 97, 114,
+    //  114, 105, 110, 116, 0, 0, 0, 3, 0, 0, 0, 123, 0, 0, 1, 200, 0, 0, 3, 21]
     assert!(get_length(&data).unwrap() == 145);
     assert!(get_compression(&data).unwrap() == true);
     println_stderr!("got data: {:?}", get_raw_data(&data).unwrap())
