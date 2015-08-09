@@ -1,12 +1,23 @@
 use std::error;
-use std::error::Error as coreError;
+use std::error::Error as CoreError;
 use std::fmt;
-use byteorder;
+use std::io::Error as IOError;
+use byteorder::Error as ByteOrderError;
 
 #[macro_export]
 macro_rules! fail {
     ($expr:expr) => (
         return Err(::std::convert::From::from($expr));
+    )
+}
+
+#[macro_export]
+macro_rules! try_result {
+    ($expr:expr) => (
+        match $expr {
+            Ok(value) => Ok(value),
+            Err(error) => fail!(error)
+        }
     )
 }
 
@@ -23,7 +34,10 @@ pub enum ErrorRepr {
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum ErrorKind {
-    MalformedBinaryParse
+    MalformedBinaryParse,
+    NotImplemented,
+    UnknownId,
+    UnknownType
 }
 
 impl WeechatParseError {
@@ -97,8 +111,16 @@ impl From<(ErrorKind, &'static str, String)> for WeechatParseError {
     }
 }
 
-impl From<byteorder::Error> for WeechatParseError {
-    fn from (error: byteorder::Error) -> WeechatParseError {
+impl From<ByteOrderError> for WeechatParseError {
+    fn from (error: ByteOrderError) -> WeechatParseError {
+        WeechatParseError {
+            repr: ErrorRepr::WithDescriptionAndDetail(ErrorKind::MalformedBinaryParse, "failed to parse binary data", error.description().to_owned())
+        }
+    }
+}
+
+impl From<IOError> for WeechatParseError {
+    fn from (error: IOError) -> WeechatParseError {
         WeechatParseError {
             repr: ErrorRepr::WithDescriptionAndDetail(ErrorKind::MalformedBinaryParse, "failed to parse binary data", error.description().to_owned())
         }

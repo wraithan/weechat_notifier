@@ -1,54 +1,86 @@
+#![feature(convert)]
+
 extern crate byteorder;
 extern crate flate2;
 
 #[macro_use]
 pub mod errors;
 
+use std::char;
 use std::io::Cursor;
 use std::io::prelude::*;
 use std::string::String;
 use byteorder::{ReadBytesExt, BigEndian};
 use flate2::read::ZlibDecoder;
 use errors::WeechatParseError;
+use errors::ErrorKind::{MalformedBinaryParse, UnknownId, UnknownType};
 
-macro_rules! println_stderr(
-    ($($arg:tt)*) => (
-        match writeln!(&mut ::std::io::stderr(), $($arg)* ) {
-            Ok(_) => {},
-            Err(x) => panic!("Unable to write to stderr: {}", x),
-        }
-    )
-);
+pub struct WeechatMessage {
+    pub id: String,
+    pub data: Vec<WeechatData>
+}
 
-pub fn read_u32(buffer: &[u8]) -> Result<u32, WeechatParseError> {
-    let mut datum = Cursor::new(buffer);
-    match datum.read_u32::<BigEndian>() {
-        Ok(value) => Ok(value),
-        Err(error) => fail!(error)
+
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+pub enum WeechatData {
+    Char(char)
+}
+
+impl WeechatMessage {
+    pub fn from_raw_message (buffer: &[u8]) -> Result<WeechatMessage, WeechatParseError> {
+        let raw_data = try!(get_raw_data(&buffer));
+        let (len, id) = try!(get_message_type(&raw_data));
+        let data = match id.as_str() {
+            "" => try!(parse_test_data(&raw_data[len..])),
+            _ => fail!((UnknownId, "Got an unfamiliar ID", id.to_owned()))
+        };
+        Ok(WeechatMessage{id: id, data: data})
     }
 }
 
-pub fn read_i32(buffer: &[u8]) -> Result<i32, WeechatParseError> {
-    let mut datum = Cursor::new(buffer);
-    match datum.read_i32::<BigEndian>() {
-        Ok(value) => Ok(value),
-        Err(error) => fail!(error)
+fn parse_test_data (buffer: &[u8]) -> Result<Vec<WeechatData>, WeechatParseError> {
+    let mut acc = vec![];
+    let element_type = get_element_type(&buffer);
+    match element_type.as_str() {
+        "chr" => {
+            let value = try!(read_u8(&buffer[3..]));
+            let input_char = try!(char::from_u32(value as u32).ok_or((MalformedBinaryParse, "Couldn't read char data")));
+            acc.push(WeechatData::Char(input_char))
+        },
+        _ => fail!((UnknownType, "Got unfamiliar type", element_type.to_owned()))
     }
+    Ok(acc)
 }
 
-pub fn read_string(buffer: &[u8]) -> Result<String, WeechatParseError> {
-    match read_u32(buffer) {
+fn get_element_type (buffer: &[u8]) -> String {
+    String::from_utf8_lossy(&buffer[..3]).into_owned()
+}
+
+fn read_u32(buffer: &[u8]) -> Result<u32, WeechatParseError> {
+    let mut datum = Cursor::new(buffer);
+    try_result!(datum.read_u32::<BigEndian>())
+}
+
+fn read_u8(buffer: &[u8]) -> Result<u8, WeechatParseError> {
+    let mut datum = Cursor::new(buffer);
+    try_result!(datum.read_u8())
+}
+
+fn read_i32(buffer: &[u8]) -> Result<i32, WeechatParseError> {
+    let mut datum = Cursor::new(buffer);
+    try_result!(datum.read_i32::<BigEndian>())
+}
+
+fn read_string(buffer: &[u8]) -> Result<(usize, String), WeechatParseError> {
+    match read_i32(buffer) {
         Ok(size) => {
-            println_stderr!("size {}", size);
-            println_stderr!("const {}", 0xFFFFFFFF as u32);
-            println_stderr!("raw {:?}", &buffer[1..5]);
-            if size == 0xFFFFFFFF as u32 {
-                return Ok("".to_owned())
+            if size == -1 {
+                return Ok((4, "".to_owned()))
             }
             let length = size as usize;
             let raw_string = &buffer[5..length];
             let value = String::from_utf8_lossy(raw_string);
-            Ok(value.into_owned())
+            Ok((size as usize, value.into_owned()))
         },
         Err(error) => fail!(error)
     }
@@ -58,31 +90,40 @@ pub fn get_length (buffer: &[u8]) -> Result<u32, WeechatParseError> {
     read_u32(buffer)
 }
 
-pub fn get_compression (buffer: &[u8]) -> Result<bool, String> {
+pub fn get_compression (buffer: &[u8]) -> Result<bool, WeechatParseError> {
     if let Some(flag) = buffer.get(4) {
         Ok(flag == &1)
     } else {
-        Err("buffer too short".to_owned())
+        fail!((MalformedBinaryParse, "Could not find compression flag"))
     }
 }
 
-pub fn get_message_type (buffer: &[u8]) -> Result<String, WeechatParseError> {
+pub fn get_message_type (buffer: &[u8]) -> Result<(usize, String), WeechatParseError> {
     read_string(&buffer)
 }
 
-pub fn get_raw_data (buffer: &[u8]) -> Result<Vec<u8>, String> {
+pub fn get_raw_data (buffer: &[u8]) -> Result<Vec<u8>, WeechatParseError> {
     let mut datum = Cursor::new(buffer);
     datum.set_position(5);
     let mut decoder = ZlibDecoder::new(datum);
     let mut result = Vec::<u8>::new();
     match decoder.read_to_end(&mut result) {
         Ok(_) => Ok(result),
-        Err(_) => Err("decoding bummer".to_owned())
+        Err(error) => fail!(error)
     }
 }
 
+// macro_rules! println_stderr(
+//     ($($arg:tt)*) => (
+//         match writeln!(&mut ::std::io::stderr(), $($arg)* ) {
+//             Ok(_) => {},
+//             Err(x) => panic!("Unable to write to stderr: {}", x),
+//         }
+//     )
+// );
+
 #[test]
-fn parse_test_data() {
+fn test_parse_test_data() {
     // Data as returned by the test command in weechat:
     let data =  [0, 0, 0, 145, 1, 120, 156, 251, 255, 255, 255, 255, 228, 140,
                  34, 199, 204, 188, 18, 6, 198, 71, 14, 64, 234, 255, 63, 217,
@@ -96,6 +137,9 @@ fn parse_test_data() {
                  128, 66, 64, 92, 205, 192, 192, 120, 2, 200, 20, 5, 0, 59, 212,
                  56, 52];
 
+    let message = WeechatMessage::from_raw_message(&data).unwrap();
+    assert_eq!(message.id, "".to_owned());
+    assert_eq!(message.data.get(0), Some(&WeechatData::Char('A')));
     // uncompressed data blob.
     // [255, 255, 255, 255, 99, 104, 114, 65, 105, 110, 116, 0, 1, 226, 64, 105,
     //  110, 116, 255, 254, 29, 192, 108, 111, 110, 10, 49, 50, 51, 52, 53, 54,
@@ -110,5 +154,8 @@ fn parse_test_data() {
     assert_eq!(get_length(&data).unwrap(), 145);
     assert_eq!(get_compression(&data).unwrap(), true);
     let raw_data = get_raw_data(&data).unwrap();
-    assert_eq!(get_message_type(&raw_data).unwrap(), "".to_owned());
+    let (type_jump, message_type) = get_message_type(&raw_data).unwrap();
+    assert_eq!(type_jump, 4);
+    assert_eq!(message_type, "".to_owned());
+    assert_eq!(get_element_type(&raw_data[type_jump..]), "chr".to_owned());
 }
