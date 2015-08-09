@@ -67,7 +67,11 @@ fn parse_test_data (buffer: &[u8], length: usize) -> Result<Vec<WeechatData>, We
                 acc.push(WeechatData::Int(try!(read_i32(&buffer[position..]))));
                 position += 4;
             },
-            "lon" => break,
+            "lon" => {
+                let (len, value) = try!(read_long(&buffer[position..]));
+                acc.push(WeechatData::Long(value));
+                position += len
+            },
             "str" => break,
             "buf" => break,
             "ptr" => break,
@@ -100,6 +104,14 @@ fn read_u8(buffer: &[u8]) -> Result<u8, WeechatParseError> {
 fn read_i32(buffer: &[u8]) -> Result<i32, WeechatParseError> {
     let mut datum = Cursor::new(buffer);
     try_result!(datum.read_i32::<BigEndian>())
+}
+
+fn read_long(buffer: &[u8]) -> Result<(usize, i64), WeechatParseError> {
+    let length = try!(read_u8(&buffer)) as usize;
+    let end = length + 1;
+    let value = String::from_utf8_lossy(&buffer[1..end]).into_owned();
+    let long = try!(i64::from_str_radix(value.as_str(), 10));
+    Ok((end, long))
 }
 
 fn read_string(buffer: &[u8]) -> Result<(usize, String), WeechatParseError> {
@@ -164,8 +176,8 @@ fn test_parse_test_data() {
     assert_eq!(message.data.get(0), Some(&WeechatData::Char('A')));
     assert_eq!(message.data.get(1), Some(&WeechatData::Int(123456)));
     assert_eq!(message.data.get(2), Some(&WeechatData::Int(-123456)));
-    // assert_eq!(message.data.get(3), Some(&WeechatData::Long(1234567890)));
-    // assert_eq!(message.data.get(4), Some(&WeechatData::Long(-1234567890)));
+    assert_eq!(message.data.get(3), Some(&WeechatData::Long(1234567890)));
+    assert_eq!(message.data.get(4), Some(&WeechatData::Long(-1234567890)));
     // uncompressed data blob.
     // [255, 255, 255, 255, 99, 104, 114, 65, 105, 110, 116, 0, 1, 226, 64, 105,
     //  110, 116, 255, 254, 29, 192, 108, 111, 110, 10, 49, 50, 51, 52, 53, 54,

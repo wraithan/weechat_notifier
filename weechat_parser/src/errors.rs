@@ -2,6 +2,7 @@ use std::error;
 use std::error::Error as CoreError;
 use std::fmt;
 use std::io::Error as IOError;
+use std::num::ParseIntError;
 use byteorder::Error as ByteOrderError;
 
 #[macro_export]
@@ -121,6 +122,14 @@ impl From<ByteOrderError> for WeechatParseError {
 
 impl From<IOError> for WeechatParseError {
     fn from (error: IOError) -> WeechatParseError {
+        WeechatParseError {
+            repr: ErrorRepr::WithDescriptionAndDetail(ErrorKind::MalformedBinaryParse, "failed to parse binary data", error.description().to_owned())
+        }
+    }
+}
+
+impl From<ParseIntError> for WeechatParseError {
+    fn from (error: ParseIntError) -> WeechatParseError {
         WeechatParseError {
             repr: ErrorRepr::WithDescriptionAndDetail(ErrorKind::MalformedBinaryParse, "failed to parse binary data", error.description().to_owned())
         }
