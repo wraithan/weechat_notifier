@@ -15,6 +15,15 @@ use flate2::read::ZlibDecoder;
 use errors::WeechatParseError;
 use errors::ErrorKind::{MalformedBinaryParse, UnknownId, UnknownType};
 
+macro_rules! println_stderr(
+    ($($arg:tt)*) => (
+        match writeln!(&mut ::std::io::stderr(), $($arg)* ) {
+            Ok(_) => {},
+            Err(x) => panic!("Unable to write to stderr: {}", x),
+        }
+    )
+);
+
 pub struct WeechatMessage {
     pub id: String,
     pub data: Vec<WeechatData>
@@ -23,31 +32,42 @@ pub struct WeechatMessage {
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum WeechatData {
-    Char(char)
+    Char(char),
+    Int(i32)
 }
 
 impl WeechatMessage {
     pub fn from_raw_message (buffer: &[u8]) -> Result<WeechatMessage, WeechatParseError> {
         let raw_data = try!(get_raw_data(&buffer));
+        let length = raw_data.len();
         let (len, id) = try!(get_message_type(&raw_data));
         let data = match id.as_str() {
-            "" => try!(parse_test_data(&raw_data[len..])),
+            "" => try!(parse_test_data(&raw_data[len..], length)),
             _ => fail!((UnknownId, "Got an unfamiliar ID", id.to_owned()))
         };
         Ok(WeechatMessage{id: id, data: data})
     }
 }
 
-fn parse_test_data (buffer: &[u8]) -> Result<Vec<WeechatData>, WeechatParseError> {
+fn parse_test_data (buffer: &[u8], length: usize) -> Result<Vec<WeechatData>, WeechatParseError> {
     let mut acc = vec![];
-    let element_type = get_element_type(&buffer);
-    match element_type.as_str() {
-        "chr" => {
-            let value = try!(read_u8(&buffer[3..]));
-            let input_char = try!(char::from_u32(value as u32).ok_or((MalformedBinaryParse, "Couldn't read char data")));
-            acc.push(WeechatData::Char(input_char))
-        },
-        _ => fail!((UnknownType, "Got unfamiliar type", element_type.to_owned()))
+    let mut position = 0;
+    while position < length {
+        let element_type = get_element_type(&buffer[position..]);
+        println_stderr!("called");
+        match element_type.as_str() {
+            "chr" => {
+                let value = try!(read_u8(&buffer[position + 3..]));
+                let input_char = try!(char::from_u32(value as u32).ok_or((MalformedBinaryParse, "Couldn't read char data")));
+                acc.push(WeechatData::Char(input_char));
+                position += 4;
+            },
+            "int" => {
+                acc.push(WeechatData::Int(try!(read_i32(&buffer[position + 3..]))));
+                position += 7
+            },
+            _ => break//fail!((UnknownType, "Got unfamiliar type", element_type.to_owned()))
+        }
     }
     Ok(acc)
 }
@@ -113,15 +133,6 @@ pub fn get_raw_data (buffer: &[u8]) -> Result<Vec<u8>, WeechatParseError> {
     }
 }
 
-// macro_rules! println_stderr(
-//     ($($arg:tt)*) => (
-//         match writeln!(&mut ::std::io::stderr(), $($arg)* ) {
-//             Ok(_) => {},
-//             Err(x) => panic!("Unable to write to stderr: {}", x),
-//         }
-//     )
-// );
-
 #[test]
 fn test_parse_test_data() {
     // Data as returned by the test command in weechat:
@@ -140,6 +151,8 @@ fn test_parse_test_data() {
     let message = WeechatMessage::from_raw_message(&data).unwrap();
     assert_eq!(message.id, "".to_owned());
     assert_eq!(message.data.get(0), Some(&WeechatData::Char('A')));
+    assert_eq!(message.data.get(1), Some(&WeechatData::Int(123456)));
+    assert_eq!(message.data.get(2), Some(&WeechatData::Int(-123456)));
     // uncompressed data blob.
     // [255, 255, 255, 255, 99, 104, 114, 65, 105, 110, 116, 0, 1, 226, 64, 105,
     //  110, 116, 255, 254, 29, 192, 108, 111, 110, 10, 49, 50, 51, 52, 53, 54,
