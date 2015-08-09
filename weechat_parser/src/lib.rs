@@ -30,11 +30,13 @@ pub struct WeechatMessage {
 }
 
 
-#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum WeechatData {
     Char(char),
     Int(i32),
-    Long(i64)
+    Long(i64),
+    String(String),
+    StringNull
 }
 
 impl WeechatMessage {
@@ -42,11 +44,15 @@ impl WeechatMessage {
         let raw_data = try!(get_raw_data(&buffer));
         let length = raw_data.len();
         let (len, id) = try!(get_message_type(&raw_data));
-        let data = match id.as_str() {
-            "" => try!(parse_test_data(&raw_data[len..], length)),
-            _ => fail!((UnknownId, "Got an unfamiliar ID", id.to_owned()))
+        let name;
+        let data = match id {
+            None => {
+                name = "test".to_owned();
+                try!(parse_test_data(&raw_data[len..], length))
+            },
+            Some(message_type) => fail!((UnknownId, "Got an unfamiliar ID", message_type))
         };
-        Ok(WeechatMessage{id: id, data: data})
+        Ok(WeechatMessage{id: name, data: data})
     }
 }
 
@@ -70,9 +76,16 @@ fn parse_test_data (buffer: &[u8], length: usize) -> Result<Vec<WeechatData>, We
             "lon" => {
                 let (len, value) = try!(read_long(&buffer[position..]));
                 acc.push(WeechatData::Long(value));
-                position += len
+                position += len;
             },
-            "str" => break,
+            "str" => {
+                let (len, value) = try!(read_string(&buffer[position..]));
+                match value {
+                    Some(string) => acc.push(WeechatData::String(string)),
+                    None => acc.push(WeechatData::StringNull)
+                }
+                position += len;
+            },
             "buf" => break,
             "ptr" => break,
             "tim" => break,
@@ -114,16 +127,19 @@ fn read_long(buffer: &[u8]) -> Result<(usize, i64), WeechatParseError> {
     Ok((end, long))
 }
 
-fn read_string(buffer: &[u8]) -> Result<(usize, String), WeechatParseError> {
+fn read_string(buffer: &[u8]) -> Result<(usize, Option<String>), WeechatParseError> {
     match read_i32(buffer) {
         Ok(size) => {
-            if size == -1 {
-                return Ok((4, "".to_owned()))
+            if size == 0 {
+                return Ok((4, Some("".to_owned())))
             }
-            let length = size as usize;
-            let raw_string = &buffer[5..length];
+            if size == -1  {
+                return Ok((4, None))
+            }
+            let end = (size + 4) as usize;
+            let raw_string = &buffer[4..end];
             let value = String::from_utf8_lossy(raw_string);
-            Ok((size as usize, value.into_owned()))
+            Ok((end, Some(value.into_owned())))
         },
         Err(error) => fail!(error)
     }
@@ -141,7 +157,7 @@ pub fn get_compression (buffer: &[u8]) -> Result<bool, WeechatParseError> {
     }
 }
 
-pub fn get_message_type (buffer: &[u8]) -> Result<(usize, String), WeechatParseError> {
+pub fn get_message_type (buffer: &[u8]) -> Result<(usize, Option<String>), WeechatParseError> {
     read_string(&buffer)
 }
 
@@ -172,12 +188,15 @@ fn test_parse_test_data() {
                  56, 52];
 
     let message = WeechatMessage::from_raw_message(&data).unwrap();
-    assert_eq!(message.id, "".to_owned());
+    assert_eq!(message.id, "test".to_owned());
     assert_eq!(message.data.get(0), Some(&WeechatData::Char('A')));
     assert_eq!(message.data.get(1), Some(&WeechatData::Int(123456)));
     assert_eq!(message.data.get(2), Some(&WeechatData::Int(-123456)));
     assert_eq!(message.data.get(3), Some(&WeechatData::Long(1234567890)));
     assert_eq!(message.data.get(4), Some(&WeechatData::Long(-1234567890)));
+    assert_eq!(message.data.get(5), Some(&WeechatData::String("a string".to_owned())));
+    assert_eq!(message.data.get(6), Some(&WeechatData::String("".to_owned())));
+    assert_eq!(message.data.get(7), Some(&WeechatData::StringNull));
     // uncompressed data blob.
     // [255, 255, 255, 255, 99, 104, 114, 65, 105, 110, 116, 0, 1, 226, 64, 105,
     //  110, 116, 255, 254, 29, 192, 108, 111, 110, 10, 49, 50, 51, 52, 53, 54,
@@ -194,6 +213,6 @@ fn test_parse_test_data() {
     let raw_data = get_raw_data(&data).unwrap();
     let (type_jump, message_type) = get_message_type(&raw_data).unwrap();
     assert_eq!(type_jump, 4);
-    assert_eq!(message_type, "".to_owned());
+    assert_eq!(message_type, None);
     assert_eq!(get_element_type(&raw_data[type_jump..]), "chr".to_owned());
 }
