@@ -33,7 +33,8 @@ pub struct WeechatMessage {
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum WeechatData {
     Char(char),
-    Int(i32)
+    Int(i32),
+    Long(i64)
 }
 
 impl WeechatMessage {
@@ -54,19 +55,29 @@ fn parse_test_data (buffer: &[u8], length: usize) -> Result<Vec<WeechatData>, We
     let mut position = 0;
     while position < length {
         let element_type = get_element_type(&buffer[position..]);
-        println_stderr!("called");
+        position += 3;
         match element_type.as_str() {
             "chr" => {
-                let value = try!(read_u8(&buffer[position + 3..]));
+                let value = try!(read_u8(&buffer[position..]));
                 let input_char = try!(char::from_u32(value as u32).ok_or((MalformedBinaryParse, "Couldn't read char data")));
                 acc.push(WeechatData::Char(input_char));
-                position += 4;
+                position += 1;
             },
             "int" => {
-                acc.push(WeechatData::Int(try!(read_i32(&buffer[position + 3..]))));
-                position += 7
+                acc.push(WeechatData::Int(try!(read_i32(&buffer[position..]))));
+                position += 4;
             },
-            _ => break//fail!((UnknownType, "Got unfamiliar type", element_type.to_owned()))
+            "lon" => break,
+            "str" => break,
+            "buf" => break,
+            "ptr" => break,
+            "tim" => break,
+            "htb" => break,
+            "hda" => break,
+            "inf" => break,
+            "inl" => break,
+            "arr" => break,
+            _ => fail!((UnknownType, "Got unfamiliar type", element_type.to_owned()))
         }
     }
     Ok(acc)
@@ -153,6 +164,8 @@ fn test_parse_test_data() {
     assert_eq!(message.data.get(0), Some(&WeechatData::Char('A')));
     assert_eq!(message.data.get(1), Some(&WeechatData::Int(123456)));
     assert_eq!(message.data.get(2), Some(&WeechatData::Int(-123456)));
+    // assert_eq!(message.data.get(3), Some(&WeechatData::Long(1234567890)));
+    // assert_eq!(message.data.get(4), Some(&WeechatData::Long(-1234567890)));
     // uncompressed data blob.
     // [255, 255, 255, 255, 99, 104, 114, 65, 105, 110, 116, 0, 1, 226, 64, 105,
     //  110, 116, 255, 254, 29, 192, 108, 111, 110, 10, 49, 50, 51, 52, 53, 54,
