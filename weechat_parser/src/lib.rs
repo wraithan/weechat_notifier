@@ -36,7 +36,10 @@ pub enum WeechatData {
     Int(i32),
     Long(i64),
     String(String),
-    StringNull
+    StringNull,
+    Buffer(String),
+    BufferNull,
+    Pointer(String)
 }
 
 impl WeechatMessage {
@@ -86,8 +89,19 @@ fn parse_test_data (buffer: &[u8], length: usize) -> Result<Vec<WeechatData>, We
                 }
                 position += len;
             },
-            "buf" => break,
-            "ptr" => break,
+            "buf" => {
+                let (len, value) = try!(read_string(&buffer[position..]));
+                match value {
+                    Some(string) => acc.push(WeechatData::Buffer(string)),
+                    None => acc.push(WeechatData::BufferNull)
+                }
+                position += len;
+            },
+            "ptr" => {
+                let (len, value) = try!(read_pointer(&buffer[position..]));
+                acc.push(WeechatData::Pointer(value));
+                position += len;
+            },
             "tim" => break,
             "htb" => break,
             "hda" => break,
@@ -125,6 +139,15 @@ fn read_long(buffer: &[u8]) -> Result<(usize, i64), WeechatParseError> {
     let value = String::from_utf8_lossy(&buffer[1..end]).into_owned();
     let long = try!(i64::from_str_radix(value.as_str(), 10));
     Ok((end, long))
+}
+
+fn read_pointer(buffer: &[u8]) -> Result<(usize, String), WeechatParseError> {
+    let length = try!(read_u8(&buffer)) as usize;
+    let end = length + 1;
+    let mut value = String::from_utf8_lossy(&buffer[1..end]).into_owned();
+    value.insert(0, 'x');
+    value.insert(0, '0');
+    Ok((end, value))
 }
 
 fn read_string(buffer: &[u8]) -> Result<(usize, Option<String>), WeechatParseError> {
@@ -197,6 +220,10 @@ fn test_parse_test_data() {
     assert_eq!(message.data.get(5), Some(&WeechatData::String("a string".to_owned())));
     assert_eq!(message.data.get(6), Some(&WeechatData::String("".to_owned())));
     assert_eq!(message.data.get(7), Some(&WeechatData::StringNull));
+    assert_eq!(message.data.get(8), Some(&WeechatData::Buffer("buffer".to_owned())));
+    assert_eq!(message.data.get(9), Some(&WeechatData::BufferNull));
+    assert_eq!(message.data.get(10), Some(&WeechatData::Pointer("0x1234abcd".to_owned())));
+    assert_eq!(message.data.get(11), Some(&WeechatData::Pointer("0x0".to_owned())));
     // uncompressed data blob.
     // [255, 255, 255, 255, 99, 104, 114, 65, 105, 110, 116, 0, 1, 226, 64, 105,
     //  110, 116, 255, 254, 29, 192, 108, 111, 110, 10, 49, 50, 51, 52, 53, 54,
