@@ -39,7 +39,8 @@ pub enum WeechatData {
     StringNull,
     Buffer(String),
     BufferNull,
-    Pointer(String)
+    Pointer(String),
+    Time(String)
 }
 
 impl WeechatMessage {
@@ -82,7 +83,7 @@ fn parse_test_data (buffer: &[u8], length: usize) -> Result<Vec<WeechatData>, We
                 position += len;
             },
             "str" => {
-                let (len, value) = try!(read_string(&buffer[position..]));
+                let (len, value) = try!(read_string_32bit_length(&buffer[position..]));
                 match value {
                     Some(string) => acc.push(WeechatData::String(string)),
                     None => acc.push(WeechatData::StringNull)
@@ -90,7 +91,7 @@ fn parse_test_data (buffer: &[u8], length: usize) -> Result<Vec<WeechatData>, We
                 position += len;
             },
             "buf" => {
-                let (len, value) = try!(read_string(&buffer[position..]));
+                let (len, value) = try!(read_string_32bit_length(&buffer[position..]));
                 match value {
                     Some(string) => acc.push(WeechatData::Buffer(string)),
                     None => acc.push(WeechatData::BufferNull)
@@ -102,7 +103,11 @@ fn parse_test_data (buffer: &[u8], length: usize) -> Result<Vec<WeechatData>, We
                 acc.push(WeechatData::Pointer(value));
                 position += len;
             },
-            "tim" => break,
+            "tim" => {
+                let (len, value) = try!(read_time(&buffer[position..]));
+                acc.push(WeechatData::Time(value));
+                position += len;
+            },
             "htb" => break,
             "hda" => break,
             "inf" => break,
@@ -134,23 +139,31 @@ fn read_i32(buffer: &[u8]) -> Result<i32, WeechatParseError> {
 }
 
 fn read_long(buffer: &[u8]) -> Result<(usize, i64), WeechatParseError> {
-    let length = try!(read_u8(&buffer)) as usize;
-    let end = length + 1;
-    let value = String::from_utf8_lossy(&buffer[1..end]).into_owned();
+    let (end, value) = try!(read_string_8bit_length(&buffer));
     let long = try!(i64::from_str_radix(value.as_str(), 10));
     Ok((end, long))
 }
 
 fn read_pointer(buffer: &[u8]) -> Result<(usize, String), WeechatParseError> {
-    let length = try!(read_u8(&buffer)) as usize;
-    let end = length + 1;
-    let mut value = String::from_utf8_lossy(&buffer[1..end]).into_owned();
-    value.insert(0, 'x');
+    let (end, mut value) = try!(read_string_8bit_length(&buffer));
+    // Pointers should have 0x at the start.
     value.insert(0, '0');
+    value.insert(1, 'x');
     Ok((end, value))
 }
 
-fn read_string(buffer: &[u8]) -> Result<(usize, Option<String>), WeechatParseError> {
+fn read_time(buffer: &[u8]) -> Result<(usize, String), WeechatParseError> {
+    read_string_8bit_length(&buffer)
+}
+
+fn read_string_8bit_length(buffer: &[u8]) -> Result<(usize, String), WeechatParseError> {
+    let length = try!(read_u8(&buffer)) as usize;
+    let end = length + 1;
+    let value = String::from_utf8_lossy(&buffer[1..end]).into_owned();
+    Ok((end, value))
+}
+
+fn read_string_32bit_length(buffer: &[u8]) -> Result<(usize, Option<String>), WeechatParseError> {
     match read_i32(buffer) {
         Ok(size) => {
             if size == 0 {
@@ -181,7 +194,7 @@ pub fn get_compression (buffer: &[u8]) -> Result<bool, WeechatParseError> {
 }
 
 pub fn get_message_type (buffer: &[u8]) -> Result<(usize, Option<String>), WeechatParseError> {
-    read_string(&buffer)
+    read_string_32bit_length(&buffer)
 }
 
 pub fn get_raw_data (buffer: &[u8]) -> Result<Vec<u8>, WeechatParseError> {
@@ -224,6 +237,7 @@ fn test_parse_test_data() {
     assert_eq!(message.data.get(9), Some(&WeechatData::BufferNull));
     assert_eq!(message.data.get(10), Some(&WeechatData::Pointer("0x1234abcd".to_owned())));
     assert_eq!(message.data.get(11), Some(&WeechatData::Pointer("0x0".to_owned())));
+    assert_eq!(message.data.get(12), Some(&WeechatData::Time("1321993456".to_owned())));
     // uncompressed data blob.
     // [255, 255, 255, 255, 99, 104, 114, 65, 105, 110, 116, 0, 1, 226, 64, 105,
     //  110, 116, 255, 254, 29, 192, 108, 111, 110, 10, 49, 50, 51, 52, 53, 54,
