@@ -40,14 +40,15 @@ pub enum WeechatData {
     Buffer(String),
     BufferNull,
     Pointer(String),
-    Time(String)
+    Time(String),
+    Array(Vec<WeechatData>)
 }
 
 impl WeechatMessage {
     pub fn from_raw_message (buffer: &[u8]) -> Result<WeechatMessage, WeechatParseError> {
         let raw_data = try!(get_raw_data(&buffer));
-        let length = raw_data.len();
         let (len, id) = try!(get_message_type(&raw_data));
+        let length = raw_data.len() - len;
         let name;
         let data = match id {
             None => {
@@ -112,7 +113,11 @@ fn parse_test_data (buffer: &[u8], length: usize) -> Result<Vec<WeechatData>, We
             "hda" => break,
             "inf" => break,
             "inl" => break,
-            "arr" => break,
+            "arr" => {
+                let (len, value) = try!(read_array(&buffer[position..]));
+                acc.push(WeechatData::Array(value));
+                position += len;
+            },
             _ => fail!((UnknownType, "Got unfamiliar type", element_type.to_owned()))
         }
     }
@@ -181,6 +186,35 @@ fn read_string_32bit_length(buffer: &[u8]) -> Result<(usize, Option<String>), We
     }
 }
 
+fn read_array(buffer: &[u8]) -> Result<(usize, Vec<WeechatData>), WeechatParseError> {
+    let array_type = get_element_type(&buffer);
+    let mut position = 3;
+    let count = try!(read_i32(&buffer[position..]));
+    position += 4;
+    let mut acc = Vec::<WeechatData>::with_capacity(count as usize);
+    match array_type.as_str() {
+        "str" => {
+            for _ in 0..count {
+                let (len, value) = try!(read_string_32bit_length(&buffer[position..]));
+                match value {
+                    Some(string) => acc.push(WeechatData::String(string)),
+                    None => acc.push(WeechatData::StringNull)
+                }
+                position += len;
+            }
+        }
+        "int" => {
+            for _ in 0..count {
+                let value = try!(read_i32(&buffer[position..]));
+                acc.push(WeechatData::Int(value));
+                position += 4;
+            }
+        }
+        _ => fail!((UnknownType, "array isn't implemented for type", format!("found array type {:?}", array_type)))
+    };
+    Ok((position, acc))
+}
+
 pub fn get_length (buffer: &[u8]) -> Result<u32, WeechatParseError> {
     read_u32(buffer)
 }
@@ -238,6 +272,21 @@ fn test_parse_test_data() {
     assert_eq!(message.data.get(10), Some(&WeechatData::Pointer("0x1234abcd".to_owned())));
     assert_eq!(message.data.get(11), Some(&WeechatData::Pointer("0x0".to_owned())));
     assert_eq!(message.data.get(12), Some(&WeechatData::Time("1321993456".to_owned())));
+    if let &WeechatData::Array(ref test_string_array) = message.data.get(13).unwrap() {
+        assert_eq!(test_string_array.len(), 2);
+        assert_eq!(test_string_array.get(0), Some(&WeechatData::String("abc".to_owned())));
+        assert_eq!(test_string_array.get(1), Some(&WeechatData::String("de".to_owned())));
+    } else {
+        panic!("got wrong type in test element 13 (expected Array)");
+    }
+    if let &WeechatData::Array(ref test_string_array) = message.data.get(14).unwrap() {
+        assert_eq!(test_string_array.len(), 3);
+        assert_eq!(test_string_array.get(0), Some(&WeechatData::Int(123)));
+        assert_eq!(test_string_array.get(1), Some(&WeechatData::Int(456)));
+        assert_eq!(test_string_array.get(2), Some(&WeechatData::Int(789)));
+    } else {
+        panic!("got wrong type in test element 14 (expected Array)");
+    }
     // uncompressed data blob.
     // [255, 255, 255, 255, 99, 104, 114, 65, 105, 110, 116, 0, 1, 226, 64, 105,
     //  110, 116, 255, 254, 29, 192, 108, 111, 110, 10, 49, 50, 51, 52, 53, 54,
