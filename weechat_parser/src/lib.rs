@@ -17,9 +17,8 @@ use errors::ErrorKind::{MalformedBinaryParse, UnknownId, UnknownType};
 
 macro_rules! println_stderr(
     ($($arg:tt)*) => (
-        match writeln!(&mut ::std::io::stderr(), $($arg)* ) {
-            Ok(_) => {},
-            Err(x) => panic!("Unable to write to stderr: {}", x),
+        if let Err(x) = writeln!(&mut ::std::io::stderr(), $($arg)* ) {
+            panic!("Unable to write to stderr: {}", x);
         }
     )
 );
