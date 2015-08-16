@@ -42,7 +42,7 @@ pub enum WeechatData {
     Pointer(String),
     Time(String),
     Array(Vec<WeechatData>),
-    Hdata(Vec<HashMap<String, WeechatData>>)
+    Hdata(String, Vec<HashMap<String, WeechatData>>)
 }
 
 impl WeechatMessage {
@@ -62,65 +62,63 @@ fn parse_data (buffer: &[u8], length: usize) -> Result<Vec<WeechatData>, Weechat
     while position < length {
         let element_type = get_element_type(&buffer[position..]);
         position += 3;
-        match element_type.as_str() {
-            "chr" => {
-                let value = try!(read_u8(&buffer[position..]));
-                let input_char = try!(char::from_u32(value as u32).ok_or((MalformedBinaryParse, "Couldn't read char data")));
-                acc.push(WeechatData::Char(input_char));
-                position += 1;
-            },
-            "int" => {
-                acc.push(WeechatData::Int(try!(read_i32(&buffer[position..]))));
-                position += 4;
-            },
-            "lon" => {
-                let (len, value) = try!(read_long(&buffer[position..]));
-                acc.push(WeechatData::Long(value));
-                position += len;
-            },
-            "str" => {
-                let (len, value) = try!(read_string_32bit_length(&buffer[position..]));
-                match value {
-                    Some(string) => acc.push(WeechatData::String(string)),
-                    None => acc.push(WeechatData::StringNull)
-                }
-                position += len;
-            },
-            "buf" => {
-                let (len, value) = try!(read_string_32bit_length(&buffer[position..]));
-                match value {
-                    Some(string) => acc.push(WeechatData::Buffer(string)),
-                    None => acc.push(WeechatData::BufferNull)
-                }
-                position += len;
-            },
-            "ptr" => {
-                let (len, value) = try!(read_pointer(&buffer[position..]));
-                acc.push(WeechatData::Pointer(value));
-                position += len;
-            },
-            "tim" => {
-                let (len, value) = try!(read_time(&buffer[position..]));
-                acc.push(WeechatData::Time(value));
-                position += len;
-            },
-            "htb" => break,
-            "hda" => {
-                let (len, value) = try!(read_hdata(&buffer[position..]));
-                acc.push(WeechatData::Hdata(value));
-                position += len;
-            },
-            "inf" => break,
-            "inl" => break,
-            "arr" => {
-                let (len, value) = try!(read_array(&buffer[position..]));
-                acc.push(WeechatData::Array(value));
-                position += len;
-            },
-            _ => fail!((UnknownType, "Got unfamiliar type", element_type.to_owned()))
-        }
+        let (len, value) = try!(parse_element(&element_type, &buffer[position..]));
+        position += len;
+        acc.push(value);
     }
     Ok(acc)
+}
+
+fn parse_element (element_type: &String, buffer: &[u8]) -> Result<(usize, WeechatData), WeechatParseError> {
+    match element_type.as_str() {
+        "chr" => {
+            let value = try!(read_u8(&buffer));
+            let input_char = try!(char::from_u32(value as u32).ok_or((MalformedBinaryParse, "Couldn't read char data")));
+            Ok((1, WeechatData::Char(input_char)))
+        },
+        "int" => {
+            let value = try!(read_i32(&buffer));
+            Ok((4, WeechatData::Int(value)))
+        },
+        "lon" => {
+            let (len, value) = try!(read_long(&buffer));
+            Ok((len, WeechatData::Long(value)))
+        },
+        "str" => {
+            let (len, value) = try!(read_string_32bit_length(&buffer));
+            match value {
+                Some(string) => Ok((len, WeechatData::String(string))),
+                None => Ok((len, WeechatData::StringNull))
+            }
+        },
+        "buf" => {
+            let (len, value) = try!(read_string_32bit_length(&buffer));
+            match value {
+                Some(string) => Ok((len, WeechatData::Buffer(string))),
+                None => Ok((len, WeechatData::BufferNull))
+            }
+        },
+        "ptr" => {
+            let (len, value) = try!(read_pointer(&buffer));
+            Ok((len, WeechatData::Pointer(value)))
+        },
+        "tim" => {
+            let (len, value) = try!(read_time(&buffer));
+            Ok((len, WeechatData::Time(value)))
+        },
+        // "htb" => break,
+        "hda" => {
+            let (len, name, value) = try!(read_hdata(&buffer));
+            Ok((len, WeechatData::Hdata(name, value)))
+        },
+        // "inf" => break,
+        // "inl" => break,
+        "arr" => {
+            let (len, value) = try!(read_array(&buffer));
+            Ok((len, WeechatData::Array(value)))
+        },
+        _ => fail!((UnknownType, "Got unfamiliar type", element_type.to_owned()))
+    }
 }
 
 fn get_element_type (buffer: &[u8]) -> String {
@@ -160,15 +158,40 @@ fn read_time(buffer: &[u8]) -> Result<(usize, String), WeechatParseError> {
     read_string_8bit_length(&buffer)
 }
 
-fn read_hdata(buffer: &[u8]) -> Result<(usize, Vec<HashMap<String, WeechatData>>), WeechatParseError> {
+fn read_hdata(buffer: &[u8]) -> Result<(usize, String, Vec<HashMap<String, WeechatData>>), WeechatParseError> {
     let mut position = 0;
-    let (name_len, name) = try!(read_string_32bit_length(&buffer));
+    let (name_len, name_raw) = try!(read_string_32bit_length(&buffer));
+    let name = name_raw.unwrap();
     position += name_len;
     let (keys_len, keys_raw) = try!(read_string_32bit_length(&buffer[position..]));
     position += keys_len;
-    let count = try!(read_i32(&buffer[position..]));
-    println_stderr!("name: {}, keys: {}, count: {}", name.unwrap(), keys_raw.unwrap(), count);
-    fail!((UnknownType, "not implemented: hdata"))
+    let keys_owned = keys_raw.unwrap();
+    let count = try!(read_i32(&buffer[position..])) as usize;
+    position += 4;
+
+    let mut keys = vec![];
+    for chunk in keys_owned.split(',') {
+        let key: Vec<&str> = chunk.split(':').collect();
+        keys.push((key[0].to_owned(), key[1].to_owned()));
+    }
+
+
+    let mut acc = Vec::with_capacity(count);
+    for _ in (0..count) {
+        let mut row_data = HashMap::new();
+        let (ptr_len, ptr_value) = try!(read_pointer(&buffer[position..]));
+        position += ptr_len;
+        row_data.insert("pointer".to_owned(), WeechatData::Pointer(ptr_value));
+
+        for &(ref key_name, ref value_type) in keys.iter() {
+            let (len, value) = try!(parse_element(value_type, &buffer[position..]));
+            position += len;
+            row_data.insert(key_name.clone(), value);
+        }
+        acc.push(row_data);
+    }
+
+    Ok((position, name, acc))
 }
 
 fn read_string_8bit_length(buffer: &[u8]) -> Result<(usize, String), WeechatParseError> {
