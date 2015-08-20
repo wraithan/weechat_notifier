@@ -127,17 +127,17 @@ fn get_element_type (buffer: &[u8]) -> String {
 
 fn read_u32(buffer: &[u8]) -> Result<u32, WeechatParseError> {
     let mut datum = Cursor::new(buffer);
-    try_result!(datum.read_u32::<BigEndian>())
+    Ok(try!(datum.read_u32::<BigEndian>()))
 }
 
 fn read_u8(buffer: &[u8]) -> Result<u8, WeechatParseError> {
     let mut datum = Cursor::new(buffer);
-    try_result!(datum.read_u8())
+    Ok(try!(datum.read_u8()))
 }
 
 fn read_i32(buffer: &[u8]) -> Result<i32, WeechatParseError> {
     let mut datum = Cursor::new(buffer);
-    try_result!(datum.read_i32::<BigEndian>())
+    Ok(try!(datum.read_i32::<BigEndian>()))
 }
 
 fn read_long(buffer: &[u8]) -> Result<(usize, i64), WeechatParseError> {
@@ -202,21 +202,19 @@ fn read_string_8bit_length(buffer: &[u8]) -> Result<(usize, String), WeechatPars
 }
 
 fn read_string_32bit_length(buffer: &[u8]) -> Result<(usize, Option<String>), WeechatParseError> {
-    match read_i32(buffer) {
-        Ok(size) => {
-            if size == 0 {
-                return Ok((4, Some("".to_owned())))
-            }
-            if size == -1  {
-                return Ok((4, None))
-            }
-            let end = (size + 4) as usize;
-            let raw_string = &buffer[4..end];
-            let value = String::from_utf8_lossy(raw_string);
-            Ok((end, Some(value.into_owned())))
-        },
-        Err(error) => fail!(error)
+    let size = try!(read_i32(buffer));
+
+    if size == 0 {
+        return Ok((4, Some("".to_owned())))
     }
+    if size == -1  {
+        return Ok((4, None))
+    }
+    let end = (size + 4) as usize;
+    let raw_string = &buffer[4..end];
+    let value = String::from_utf8_lossy(raw_string);
+    Ok((end, Some(value.into_owned())))
+
 }
 
 fn read_array(buffer: &[u8]) -> Result<(usize, Vec<WeechatData>), WeechatParseError> {
@@ -269,10 +267,8 @@ fn get_raw_data (buffer: &[u8]) -> Result<Vec<u8>, WeechatParseError> {
     datum.set_position(5);
     let mut decoder = ZlibDecoder::new(datum);
     let mut result = Vec::<u8>::new();
-    match decoder.read_to_end(&mut result) {
-        Ok(_) => Ok(result),
-        Err(error) => fail!(error)
-    }
+    try!(decoder.read_to_end(&mut result));
+    Ok(result)
 }
 
 #[test]

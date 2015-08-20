@@ -12,16 +12,6 @@ macro_rules! fail {
     )
 }
 
-#[macro_export]
-macro_rules! try_result {
-    ($expr:expr) => (
-        match $expr {
-            Ok(value) => Ok(value),
-            Err(error) => fail!(error)
-        }
-    )
-}
-
 pub struct WeechatParseError {
     repr: ErrorRepr,
 }
