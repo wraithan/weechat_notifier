@@ -33,6 +33,15 @@ fn simple_session_test () {
         assert_eq!(hdata.get("date_printed").unwrap(), &WeechatData::Time("1439651878".to_owned()));
         assert_eq!(hdata.get("displayed").unwrap(), &WeechatData::Char('\u{1}'));
         assert_eq!(hdata.get("highlight").unwrap(), &WeechatData::Char('\u{0}'));
+        let tags = WeechatData::Array(vec![WeechatData::String("irc_privmsg".to_owned()),
+                                           WeechatData::String("notify_message".to_owned()),
+                                           WeechatData::String("prefix_nick_cyan".to_owned()),
+                                           WeechatData::String("nick_Wraithan".to_owned()),
+                                           WeechatData::String("host_~wraithan@104.236.142.65".to_owned()),
+                                           WeechatData::String("log1".to_owned())]);
+        assert_eq!(hdata.get("tags_array").unwrap(), &tags);
+        assert_eq!(hdata.get("prefix").unwrap(), &WeechatData::String("\u{19}F10\u{19}F13Wraithan".to_owned()));
+        assert_eq!(hdata.get("message").unwrap(), &WeechatData::String("Hey".to_owned()));
     } else {
         panic!("unexpected type for first message");
     }
