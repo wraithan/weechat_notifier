@@ -1,4 +1,5 @@
 #![feature(convert)]
+#![feature(drain)]
 
 extern crate byteorder;
 extern crate flate2;
@@ -11,6 +12,8 @@ use std::io::Cursor;
 use std::io::prelude::*;
 use std::string::String;
 use std::collections::HashMap;
+use std::sync::mpsc::{channel, Sender, Receiver};
+use std::thread;
 use byteorder::{ReadBytesExt, BigEndian};
 use flate2::read::ZlibDecoder;
 use errors::WeechatParseError;
@@ -53,6 +56,52 @@ impl WeechatMessage {
         let name = id.unwrap_or("test".to_owned());
         let data = try!(parse_data(&raw_data[len..], length));
         Ok(WeechatMessage{id: name, data: data})
+    }
+}
+
+pub fn new () -> (Sender<Vec<u8>>, Receiver<WeechatMessage>) {
+    let (tx_out, rx_out) = channel();
+    let (tx_in, rx_in) = channel();
+    thread::spawn(move|| {
+        start_parser(rx_in, tx_out)
+    });
+    (tx_in, rx_out)
+}
+
+fn start_parser (input: Receiver<Vec<u8>>, output: Sender<WeechatMessage>) {
+    let mut buffer = vec![];
+    loop {
+        match input.recv() {
+            Ok(data) => {
+                buffer.extend(data.into_iter());
+                let buffer_length = buffer.len();
+                while buffer_length > 4 {
+                    match get_length(&buffer) {
+                        Ok(message_length) => {
+                            if buffer_length >= message_length as usize {
+                                let message_buffer: Vec<u8> = buffer.drain(..message_length as usize).collect();
+                                match WeechatMessage::from_raw_message(&message_buffer) {
+                                    Ok(message) => {
+                                        output.send(message).unwrap();
+                                    },
+                                    Err(_) => {
+                                        return;
+                                    }
+                                }
+                            } else {
+                                break;
+                            }
+                        },
+                        Err(_) => {
+                            return;
+                        }
+                    }
+                }
+            },
+            Err(_) => {
+                return;
+            }
+        }
     }
 }
 
