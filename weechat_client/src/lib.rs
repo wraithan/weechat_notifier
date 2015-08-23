@@ -5,6 +5,7 @@ extern crate weechat_parser;
 use std::io::prelude::*;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
+use weechat_parser::WeechatData;
 
 macro_rules! println_stderr(
     ($($arg:tt)*) => (
@@ -42,22 +43,44 @@ pub fn decode() {
     in_stream.set_read_timeout(Some(Duration::from_millis(1000))).unwrap();
     out_stream.write("init\n".as_bytes()).unwrap();
     out_stream.write("sync\n".as_bytes()).unwrap();
-    let mut buffer = Vec::<u8>::with_capacity(150);
-    println_stderr!("about to read");
-
-    while buffer.len() < 1000 {
-        println_stderr!("buffer contains {}", buffer.len());
+    let (tx, rx) = weechat_parser::new();
+    loop {
+        let mut buffer = Vec::<u8>::with_capacity(150);
         match in_stream.read_to_end(&mut buffer) {
-            Ok(count) => println_stderr!("got {}", count),
-            Err(_) => println_stderr!("nothing")
+            Ok(count) =>{
+                if count > 0 {
+                    println_stderr!("sending {}", buffer.len());
+                }
+            },
+            Err(e) => {}//println_stderr!("error reading {:?}", e)
         }
-    }
-    println_stderr!("full data: {:?}", buffer);
-    if let Ok(length) = weechat_parser::get_length(&buffer) {
-        println_stderr!("got length of {}", length);
-        assert!(length == 145);
-    } else {
-        println_stderr!("parser error");
+        println_stderr!("received chunk of size: {:?}", buffer.len());
+        tx.send(buffer).unwrap();
+        loop {
+            match rx.try_recv() {
+                Ok(res) => match res {
+                    Ok(message) => {
+                        if message.id == "_buffer_line_added" {
+                            if let &WeechatData::Hdata(ref name, ref data) = message.data.get(0).unwrap() {
+                                let body = data.get(0).unwrap();
+                                if let &WeechatData::Char(ref highlight) = body.get("highlight").unwrap() {
+                                    if highlight == &'\u{1}' {
+                                        println_stderr!("Got message: {:?}", body.get("message").unwrap());
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        println_stderr!("error parsing {:?}", e);
+                        break;
+                    }
+                },
+                Err(e) => {
+                    break;
+                }
+            }
+        }
     }
 
     println_stderr!("done reading");
