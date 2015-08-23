@@ -27,6 +27,7 @@ macro_rules! println_stderr(
     )
 );
 
+#[derive(Debug)]
 pub struct WeechatMessage {
     pub id: String,
     pub data: Vec<WeechatData>
@@ -59,7 +60,7 @@ impl WeechatMessage {
     }
 }
 
-pub fn new () -> (Sender<Vec<u8>>, Receiver<WeechatMessage>) {
+pub fn new () -> (Sender<Vec<u8>>, Receiver<Result<WeechatMessage, WeechatParseError>>) {
     let (tx_out, rx_out) = channel();
     let (tx_in, rx_in) = channel();
     thread::spawn(move|| {
@@ -68,33 +69,34 @@ pub fn new () -> (Sender<Vec<u8>>, Receiver<WeechatMessage>) {
     (tx_in, rx_out)
 }
 
-fn start_parser (input: Receiver<Vec<u8>>, output: Sender<WeechatMessage>) {
+#[macro_export]
+macro_rules! try_send_error {
+    ($output:ident, $expr:expr) => (
+        match $expr {
+            Ok(x) => x,
+            Err(e) => {
+                $output.send(Err(::std::convert::From::from(e))).unwrap();
+                return
+            }
+        }
+    )
+}
+
+
+fn start_parser (input: Receiver<Vec<u8>>, output: Sender<Result<WeechatMessage, WeechatParseError>>) {
     let mut buffer = vec![];
     loop {
         match input.recv() {
             Ok(data) => {
                 buffer.extend(data.into_iter());
-                let buffer_length = buffer.len();
-                while buffer_length > 4 {
-                    match get_length(&buffer) {
-                        Ok(message_length) => {
-                            if buffer_length >= message_length as usize {
-                                let message_buffer: Vec<u8> = buffer.drain(..message_length as usize).collect();
-                                match WeechatMessage::from_raw_message(&message_buffer) {
-                                    Ok(message) => {
-                                        output.send(message).unwrap();
-                                    },
-                                    Err(_) => {
-                                        return;
-                                    }
-                                }
-                            } else {
-                                break;
-                            }
-                        },
-                        Err(_) => {
-                            return;
-                        }
+                while buffer.len() > 4 {
+                    let message_length = try_send_error!(output, get_length(&buffer));
+                    if buffer.len() >= message_length as usize {
+                        let message_buffer: Vec<u8> = buffer.drain(..message_length as usize).collect();
+                        let message = try_send_error!(output, WeechatMessage::from_raw_message(&message_buffer));
+                        output.send(Ok(message)).unwrap();
+                    } else {
+                        break;
                     }
                 }
             },
