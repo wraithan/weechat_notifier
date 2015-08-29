@@ -62,12 +62,14 @@ pub fn decode() {
                         Ok(message) => {
                             if message.id == "_buffer_line_added" {
                                 if let &WeechatData::Hdata(_, _, ref data) = message.data.get(0).unwrap() {
-                                    let body = data.get(0).unwrap();
-                                    if let &WeechatData::Char(ref highlight) = body.get("highlight").unwrap() {
-                                        if highlight == &'\u{1}' {
-                                            println_stderr!("Got message: {:?}", body.get("message").unwrap());
+                                    for body in data {
+                                        if let &WeechatData::Char(ref highlight) = body.get("highlight").unwrap() {
+                                            if highlight == &'\u{1}' {
+                                                println_stderr!("Got message: {:?}", body.get("message").unwrap());
+                                            }
                                         }
                                     }
+
                                 }
                             }
                         },
