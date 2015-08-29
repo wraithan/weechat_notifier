@@ -31,7 +31,7 @@ macro_rules! println_stderr(
 #[derive(Debug)]
 pub struct WeechatMessage {
     pub id: String,
-    pub data: Vec<WeechatData>
+    pub data: Vec<WeechatData>,
 }
 
 
@@ -47,26 +47,24 @@ pub enum WeechatData {
     Pointer(String),
     Time(String),
     Array(Vec<WeechatData>),
-    Hdata(String, Vec<WeechatData>, Vec<HashMap<String, WeechatData>>)
+    Hdata(String, Vec<WeechatData>, Vec<HashMap<String, WeechatData>>),
 }
 
 impl WeechatMessage {
-    pub fn from_raw_message (buffer: &[u8]) -> Result<WeechatMessage, WeechatParseError> {
+    pub fn from_raw_message(buffer: &[u8]) -> Result<WeechatMessage, WeechatParseError> {
         let raw_data = try!(get_raw_data(&buffer));
         let (len, id) = try!(get_message_type(&raw_data));
         let length = raw_data.len() - len;
         let name = id.unwrap_or("test".to_owned());
         let data = try!(parse_data(&raw_data[len..], length));
-        Ok(WeechatMessage{id: name, data: data})
+        Ok(WeechatMessage { id: name, data: data })
     }
 }
 
-pub fn new () -> (Sender<Vec<u8>>, Receiver<Result<WeechatMessage, WeechatParseError>>) {
+pub fn new() -> (Sender<Vec<u8>>, Receiver<Result<WeechatMessage, WeechatParseError>>) {
     let (tx_out, rx_out) = channel();
     let (tx_in, rx_in) = channel();
-    thread::spawn(move|| {
-        start_parser(rx_in, tx_out)
-    });
+    thread::spawn(move || start_parser(rx_in, tx_out));
     (tx_in, rx_out)
 }
 
@@ -84,7 +82,8 @@ macro_rules! try_send_error {
 }
 
 
-fn start_parser (input: Receiver<Vec<u8>>, output: Sender<Result<WeechatMessage, WeechatParseError>>) {
+fn start_parser(input: Receiver<Vec<u8>>,
+                output: Sender<Result<WeechatMessage, WeechatParseError>>) {
     let mut buffer = vec![];
     loop {
         match input.recv() {
@@ -93,14 +92,16 @@ fn start_parser (input: Receiver<Vec<u8>>, output: Sender<Result<WeechatMessage,
                 while buffer.len() > 4 {
                     let message_length = try_send_error!(output, get_length(&buffer));
                     if buffer.len() >= message_length as usize {
-                        let message_buffer: Vec<u8> = buffer.drain(..message_length as usize).collect();
-                        let message = try_send_error!(output, WeechatMessage::from_raw_message(&message_buffer));
+                        let message_buffer: Vec<u8> =
+                            buffer.drain(..message_length as usize).collect();
+                        let message = try_send_error!(output,
+                                                      WeechatMessage::from_raw_message(&message_buffer));
                         output.send(Ok(message)).unwrap();
                     } else {
                         break;
                     }
                 }
-            },
+            }
             Err(_) => {
                 return;
             }
@@ -108,7 +109,7 @@ fn start_parser (input: Receiver<Vec<u8>>, output: Sender<Result<WeechatMessage,
     }
 }
 
-fn parse_data (buffer: &[u8], length: usize) -> Result<Vec<WeechatData>, WeechatParseError> {
+fn parse_data(buffer: &[u8], length: usize) -> Result<Vec<WeechatData>, WeechatParseError> {
     let mut acc = vec![];
     let mut position = 0;
     while position < length {
@@ -121,59 +122,62 @@ fn parse_data (buffer: &[u8], length: usize) -> Result<Vec<WeechatData>, Weechat
     Ok(acc)
 }
 
-fn parse_element (element_type: &String, buffer: &[u8]) -> Result<(usize, WeechatData), WeechatParseError> {
+fn parse_element(element_type: &String,
+                 buffer: &[u8])
+                 -> Result<(usize, WeechatData), WeechatParseError> {
     match element_type.as_str() {
         "chr" => {
             let value = try!(read_u8(&buffer));
-            let input_char = try!(char::from_u32(value as u32).ok_or((MalformedBinaryParse, "Couldn't read char data")));
+            let input_char = try!(char::from_u32(value as u32).ok_or((MalformedBinaryParse,
+                                                                      "Couldn't read char data")));
             Ok((1, WeechatData::Char(input_char)))
-        },
+        }
         "int" => {
             let value = try!(read_i32(&buffer));
             Ok((4, WeechatData::Int(value)))
-        },
+        }
         "lon" => {
             let (len, value) = try!(read_long(&buffer));
             Ok((len, WeechatData::Long(value)))
-        },
+        }
         "str" => {
             let (len, value) = try!(read_string_32bit_length(&buffer));
             match value {
                 Some(string) => Ok((len, WeechatData::String(string))),
-                None => Ok((len, WeechatData::StringNull))
+                None => Ok((len, WeechatData::StringNull)),
             }
-        },
+        }
         "buf" => {
             let (len, value) = try!(read_string_32bit_length(&buffer));
             match value {
                 Some(string) => Ok((len, WeechatData::Buffer(string))),
-                None => Ok((len, WeechatData::BufferNull))
+                None => Ok((len, WeechatData::BufferNull)),
             }
-        },
+        }
         "ptr" => {
             let (len, value) = try!(read_pointer(&buffer));
             Ok((len, WeechatData::Pointer(value)))
-        },
+        }
         "tim" => {
             let (len, value) = try!(read_time(&buffer));
             Ok((len, WeechatData::Time(value)))
-        },
+        }
         // "htb" => break,
         "hda" => {
             let (len, name, pointers, value) = try!(read_hdata(&buffer));
             Ok((len, WeechatData::Hdata(name, pointers, value)))
-        },
+        }
         // "inf" => break,
         // "inl" => break,
         "arr" => {
             let (len, value) = try!(read_array(&buffer));
             Ok((len, WeechatData::Array(value)))
-        },
-        _ => fail!((UnknownType, "Got unfamiliar type", element_type.to_owned()))
+        }
+        _ => fail!((UnknownType, "Got unfamiliar type", element_type.to_owned())),
     }
 }
 
-fn get_element_type (buffer: &[u8]) -> String {
+fn get_element_type(buffer: &[u8]) -> String {
     String::from_utf8_lossy(&buffer[..3]).into_owned()
 }
 
@@ -210,7 +214,9 @@ fn read_time(buffer: &[u8]) -> Result<(usize, String), WeechatParseError> {
     read_string_8bit_length(&buffer)
 }
 
-fn read_hdata(buffer: &[u8]) -> Result<(usize, String, Vec<WeechatData>, Vec<HashMap<String, WeechatData>>), WeechatParseError> {
+fn read_hdata(buffer: &[u8])
+              -> Result<(usize, String, Vec<WeechatData>, Vec<HashMap<String, WeechatData>>),
+                        WeechatParseError> {
     let mut position = 0;
     let (name_len, name_raw) = try!(read_string_32bit_length(&buffer));
     let name = name_raw.unwrap();
@@ -260,7 +266,7 @@ fn read_string_32bit_length(buffer: &[u8]) -> Result<(usize, Option<String>), We
     if size == 0 {
         return Ok((4, Some("".to_owned())))
     }
-    if size == -1  {
+    if size == -1 {
         return Ok((4, None))
     }
     let end = (size + 4) as usize;
@@ -282,7 +288,7 @@ fn read_array(buffer: &[u8]) -> Result<(usize, Vec<WeechatData>), WeechatParseEr
                 let (len, value) = try!(read_string_32bit_length(&buffer[position..]));
                 match value {
                     Some(string) => acc.push(WeechatData::String(string)),
-                    None => acc.push(WeechatData::StringNull)
+                    None => acc.push(WeechatData::StringNull),
                 }
                 position += len;
             }
@@ -294,16 +300,18 @@ fn read_array(buffer: &[u8]) -> Result<(usize, Vec<WeechatData>), WeechatParseEr
                 position += 4;
             }
         }
-        _ => fail!((UnknownType, "array isn't implemented for type", format!("found array type {:?}", array_type)))
+        _ => fail!((UnknownType,
+                    "array isn't implemented for type",
+                    format!("found array type {:?}", array_type))),
     };
     Ok((position, acc))
 }
 
-pub fn get_length (buffer: &[u8]) -> Result<u32, WeechatParseError> {
+pub fn get_length(buffer: &[u8]) -> Result<u32, WeechatParseError> {
     read_u32(buffer)
 }
 
-pub fn get_compression (buffer: &[u8]) -> Result<bool, WeechatParseError> {
+pub fn get_compression(buffer: &[u8]) -> Result<bool, WeechatParseError> {
     if let Some(flag) = buffer.get(4) {
         Ok(flag == &1)
     } else {
@@ -311,11 +319,11 @@ pub fn get_compression (buffer: &[u8]) -> Result<bool, WeechatParseError> {
     }
 }
 
-fn get_message_type (buffer: &[u8]) -> Result<(usize, Option<String>), WeechatParseError> {
+fn get_message_type(buffer: &[u8]) -> Result<(usize, Option<String>), WeechatParseError> {
     read_string_32bit_length(&buffer)
 }
 
-fn get_raw_data (buffer: &[u8]) -> Result<Vec<u8>, WeechatParseError> {
+fn get_raw_data(buffer: &[u8]) -> Result<Vec<u8>, WeechatParseError> {
     let mut datum = Cursor::new(buffer);
     datum.set_position(5);
     let mut decoder = ZlibDecoder::new(datum);
@@ -327,7 +335,7 @@ fn get_raw_data (buffer: &[u8]) -> Result<Vec<u8>, WeechatParseError> {
 #[test]
 fn test_parse_test_data() {
     // Data as returned by the test command in weechat:
-    let data =  [0, 0, 0, 145, 1, 120, 156, 251, 255, 255, 255, 255, 228, 140,
+    let data = [0, 0, 0, 145, 1, 120, 156, 251, 255, 255, 255, 255, 228, 140,
                  34, 199, 204, 188, 18, 6, 198, 71, 14, 64, 234, 255, 63, 217,
                  3, 57, 249, 121, 92, 134, 70, 198, 38, 166, 102, 230, 22, 150,
                  6, 64, 30, 183, 46, 130, 91, 92, 82, 196, 192, 192, 192, 145,
