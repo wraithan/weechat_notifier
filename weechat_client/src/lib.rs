@@ -47,12 +47,12 @@ pub fn decode() {
     loop {
         let mut buffer = Vec::<u8>::with_capacity(150);
         match in_stream.read_to_end(&mut buffer) {
-            Ok(count) =>{
+            Ok(count) => {
                 if count > 0 {
                     println_stderr!("sending {}", buffer.len());
                 }
-            },
-            Err(e) => {}//println_stderr!("error reading {:?}", e)
+            }
+            Err(e) => {}
         }
         println_stderr!("received chunk of size: {:?}", buffer.len());
         match tx.send(buffer) {
@@ -65,13 +65,14 @@ pub fn decode() {
                                     for body in data {
                                         if let &WeechatData::Char(ref highlight) = body.get("highlight").unwrap() {
                                             if highlight == &'\u{1}' {
-                                                println_stderr!("Got message: {:?}", body.get("message").unwrap());
+                                                println_stderr!("Got message: {:?}",
+                                                                body.get("message").unwrap());
                                             }
                                         }
                                     }
                                 }
                             }
-                        },
+                        }
                         Err(e) => {
                             println_stderr!("error parsing {:?}", e);
                             break;
