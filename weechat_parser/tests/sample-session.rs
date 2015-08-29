@@ -17,7 +17,7 @@ macro_rules! println_stderr(
 );
 
 #[test]
-fn simple_session_test () {
+fn simple_session_test() {
     // Load in session data
     let mut f = File::open("./tests/fodder/simple.dat").unwrap();
     let mut buffer = vec![];
@@ -51,37 +51,39 @@ fn simple_session_test () {
 }
 
 #[test]
-fn blob_session () {
+fn blob_session() {
     timeout_ms(|| {
-        let mut f = File::open("./tests/fodder/simple.dat").unwrap();
-        let mut buffer = vec![];
-        f.read_to_end(&mut buffer).unwrap();
+                   let mut f = File::open("./tests/fodder/simple.dat").unwrap();
+                   let mut buffer = vec![];
+                   f.read_to_end(&mut buffer).unwrap();
 
-        let (tx, rx) = weechat_parser::new();
-        tx.send(buffer).unwrap();
+                   let (tx, rx) = weechat_parser::new();
+                   tx.send(buffer).unwrap();
 
-        validate_session(rx)
-    }, 2000)
+                   validate_session(rx)
+               },
+               2000)
 }
 
 #[test]
-fn single_byte_session () {
+fn single_byte_session() {
     timeout_ms(|| {
-        let mut f = File::open("./tests/fodder/simple.dat").unwrap();
-        let mut buffer = vec![];
-        f.read_to_end(&mut buffer).unwrap();
+                   let mut f = File::open("./tests/fodder/simple.dat").unwrap();
+                   let mut buffer = vec![];
+                   f.read_to_end(&mut buffer).unwrap();
 
-        let (tx, rx) = weechat_parser::new();
-        for item in buffer {
-            tx.send(vec![item]).unwrap();
-        }
+                   let (tx, rx) = weechat_parser::new();
+                   for item in buffer {
+                       tx.send(vec![item]).unwrap();
+                   }
 
-        validate_session(rx)
-    }, 2000)
+                   validate_session(rx)
+               },
+               2000)
 
 }
 
-fn validate_session (rx: Receiver<Result<WeechatMessage, WeechatParseError>>) {
+fn validate_session(rx: Receiver<Result<WeechatMessage, WeechatParseError>>) {
     let message = rx.recv().unwrap().unwrap();
     assert_eq!(message.id, "_buffer_line_added");
     if let &WeechatData::Hdata(ref name, _, ref data) = message.data.get(0).unwrap() {
