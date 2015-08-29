@@ -28,14 +28,14 @@ pub enum ErrorKind {
     MalformedBinaryParse,
     NotImplemented,
     UnknownId,
-    UnknownType
+    UnknownType,
 }
 
 impl WeechatParseError {
     pub fn kind(&self) -> ErrorKind {
         match self.repr {
             ErrorRepr::WithDescription(kind, _) => kind,
-            ErrorRepr::WithDescriptionAndDetail(kind, _, _) => kind
+            ErrorRepr::WithDescriptionAndDetail(kind, _, _) => kind,
         }
     }
 }
@@ -46,11 +46,11 @@ impl PartialEq for WeechatParseError {
             (&ErrorRepr::WithDescription(kind_a, _),
              &ErrorRepr::WithDescription(kind_b, _)) => {
                 kind_a == kind_b
-            },
+            }
             (&ErrorRepr::WithDescriptionAndDetail(kind_a, _, _),
              &ErrorRepr::WithDescriptionAndDetail(kind_b, _, _)) => {
                 kind_a == kind_b
-            },
+            }
             _ => false,
         }
     }
@@ -103,25 +103,31 @@ impl From<(ErrorKind, &'static str, String)> for WeechatParseError {
 }
 
 impl From<ByteOrderError> for WeechatParseError {
-    fn from (error: ByteOrderError) -> WeechatParseError {
+    fn from(error: ByteOrderError) -> WeechatParseError {
         WeechatParseError {
-            repr: ErrorRepr::WithDescriptionAndDetail(ErrorKind::MalformedBinaryParse, "failed to parse binary data", error.description().to_owned())
+            repr: ErrorRepr::WithDescriptionAndDetail(ErrorKind::MalformedBinaryParse,
+                                                      "failed to parse binary data",
+                                                      error.description().to_owned()),
         }
     }
 }
 
 impl From<IOError> for WeechatParseError {
-    fn from (error: IOError) -> WeechatParseError {
+    fn from(error: IOError) -> WeechatParseError {
         WeechatParseError {
-            repr: ErrorRepr::WithDescriptionAndDetail(ErrorKind::MalformedBinaryParse, "failed to parse binary data", error.description().to_owned())
+            repr: ErrorRepr::WithDescriptionAndDetail(ErrorKind::MalformedBinaryParse,
+                                                      "failed to parse binary data",
+                                                      error.description().to_owned()),
         }
     }
 }
 
 impl From<ParseIntError> for WeechatParseError {
-    fn from (error: ParseIntError) -> WeechatParseError {
+    fn from(error: ParseIntError) -> WeechatParseError {
         WeechatParseError {
-            repr: ErrorRepr::WithDescriptionAndDetail(ErrorKind::MalformedBinaryParse, "failed to parse binary data", error.description().to_owned())
+            repr: ErrorRepr::WithDescriptionAndDetail(ErrorKind::MalformedBinaryParse,
+                                                      "failed to parse binary data",
+                                                      error.description().to_owned()),
         }
     }
 }
