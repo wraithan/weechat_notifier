@@ -1,5 +1,6 @@
 #![feature(convert)]
 #![feature(drain)]
+#![feature(str_match_indices)]
 
 extern crate byteorder;
 extern crate flate2;
@@ -46,7 +47,7 @@ pub enum WeechatData {
     Pointer(String),
     Time(String),
     Array(Vec<WeechatData>),
-    Hdata(String, Vec<HashMap<String, WeechatData>>)
+    Hdata(String, Vec<WeechatData>, Vec<HashMap<String, WeechatData>>)
 }
 
 impl WeechatMessage {
@@ -159,8 +160,8 @@ fn parse_element (element_type: &String, buffer: &[u8]) -> Result<(usize, Weecha
         },
         // "htb" => break,
         "hda" => {
-            let (len, name, value) = try!(read_hdata(&buffer));
-            Ok((len, WeechatData::Hdata(name, value)))
+            let (len, name, pointers, value) = try!(read_hdata(&buffer));
+            Ok((len, WeechatData::Hdata(name, pointers, value)))
         },
         // "inf" => break,
         // "inl" => break,
@@ -209,15 +210,16 @@ fn read_time(buffer: &[u8]) -> Result<(usize, String), WeechatParseError> {
     read_string_8bit_length(&buffer)
 }
 
-fn read_hdata(buffer: &[u8]) -> Result<(usize, String, Vec<HashMap<String, WeechatData>>), WeechatParseError> {
+fn read_hdata(buffer: &[u8]) -> Result<(usize, String, Vec<WeechatData>, Vec<HashMap<String, WeechatData>>), WeechatParseError> {
     let mut position = 0;
     let (name_len, name_raw) = try!(read_string_32bit_length(&buffer));
     let name = name_raw.unwrap();
     position += name_len;
+    let pointer_count = name.match_indices('/').count() + 1;
     let (keys_len, keys_raw) = try!(read_string_32bit_length(&buffer[position..]));
     position += keys_len;
     let keys_owned = keys_raw.unwrap();
-    let count = try!(read_i32(&buffer[position..])) as usize;
+    let row_count = try!(read_i32(&buffer[position..])) as usize;
     position += 4;
 
     let mut keys = vec![];
@@ -225,15 +227,15 @@ fn read_hdata(buffer: &[u8]) -> Result<(usize, String, Vec<HashMap<String, Weech
         let key: Vec<&str> = chunk.split(':').collect();
         keys.push((key[0].to_owned(), key[1].to_owned()));
     }
-
-
-    let mut acc = Vec::with_capacity(count);
-    for _ in (0..count) {
+    let mut pointers = Vec::with_capacity(pointer_count * row_count);
+    let mut acc = Vec::with_capacity(row_count);
+    for _ in (0..row_count) {
+        for _ in (0..pointer_count) {
+            let (ptr_len, ptr_value) = try!(read_pointer(&buffer[position..]));
+            position += ptr_len;
+            pointers.push(WeechatData::Pointer(ptr_value));
+        }
         let mut row_data = HashMap::new();
-        let (ptr_len, ptr_value) = try!(read_pointer(&buffer[position..]));
-        position += ptr_len;
-        row_data.insert("pointer".to_owned(), WeechatData::Pointer(ptr_value));
-
         for &(ref key_name, ref value_type) in keys.iter() {
             let (len, value) = try!(parse_element(value_type, &buffer[position..]));
             position += len;
@@ -242,7 +244,7 @@ fn read_hdata(buffer: &[u8]) -> Result<(usize, String, Vec<HashMap<String, Weech
         acc.push(row_data);
     }
 
-    Ok((position, name, acc))
+    Ok((position, name, pointers, acc))
 }
 
 fn read_string_8bit_length(buffer: &[u8]) -> Result<(usize, String), WeechatParseError> {

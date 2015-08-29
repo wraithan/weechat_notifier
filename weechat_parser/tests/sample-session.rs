@@ -27,7 +27,7 @@ fn simple_session_test () {
 
     let message = WeechatMessage::from_raw_message(&buffer[..length]).unwrap();
     assert_eq!(message.id, "_buffer_line_added");
-    if let &WeechatData::Hdata(ref name, ref data) = message.data.get(0).unwrap() {
+    if let &WeechatData::Hdata(ref name, _, ref data) = message.data.get(0).unwrap() {
         assert_eq!(name, "line_data");
         assert_eq!(data.len(), 1);
         let hdata = data.get(0).unwrap();
@@ -84,7 +84,7 @@ fn single_byte_session () {
 fn validate_session (rx: Receiver<Result<WeechatMessage, WeechatParseError>>) {
     let message = rx.recv().unwrap().unwrap();
     assert_eq!(message.id, "_buffer_line_added");
-    if let &WeechatData::Hdata(ref name, ref data) = message.data.get(0).unwrap() {
+    if let &WeechatData::Hdata(ref name, _, ref data) = message.data.get(0).unwrap() {
         assert_eq!(name, "line_data");
         assert_eq!(data.len(), 1);
         let hdata = data.get(0).unwrap();
@@ -108,7 +108,7 @@ fn validate_session (rx: Receiver<Result<WeechatMessage, WeechatParseError>>) {
 
     let message2 = rx.recv().unwrap().unwrap();
     assert_eq!(message2.id, "_buffer_line_added");
-    if let &WeechatData::Hdata(ref name, ref data) = message2.data.get(0).unwrap() {
+    if let &WeechatData::Hdata(ref name, _, ref data) = message2.data.get(0).unwrap() {
         assert_eq!(name, "line_data");
         assert_eq!(data.len(), 1);
         let hdata = data.get(0).unwrap();
@@ -132,7 +132,7 @@ fn validate_session (rx: Receiver<Result<WeechatMessage, WeechatParseError>>) {
 
     let message3 = rx.recv().unwrap().unwrap();
     assert_eq!(message3.id, "_buffer_line_added");
-    if let &WeechatData::Hdata(ref name, ref data) = message3.data.get(0).unwrap() {
+    if let &WeechatData::Hdata(ref name, _, ref data) = message3.data.get(0).unwrap() {
         assert_eq!(name, "line_data");
         assert_eq!(data.len(), 1);
         let hdata = data.get(0).unwrap();

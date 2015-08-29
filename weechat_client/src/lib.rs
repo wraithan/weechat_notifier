@@ -38,7 +38,7 @@ impl WeechatRelay {
 }
 
 pub fn decode() {
-    let mut out_stream = TcpStream::connect("127.0.0.1:9000").unwrap();
+    let mut out_stream = TcpStream::connect("localhost:9000").unwrap();
     let mut in_stream = out_stream.try_clone().unwrap();
     in_stream.set_read_timeout(Some(Duration::from_millis(1000))).unwrap();
     out_stream.write("init\n".as_bytes()).unwrap();
@@ -55,32 +55,38 @@ pub fn decode() {
             Err(e) => {}//println_stderr!("error reading {:?}", e)
         }
         println_stderr!("received chunk of size: {:?}", buffer.len());
-        tx.send(buffer).unwrap();
-        loop {
-            match rx.try_recv() {
-                Ok(res) => match res {
-                    Ok(message) => {
-                        if message.id == "_buffer_line_added" {
-                            if let &WeechatData::Hdata(ref name, ref data) = message.data.get(0).unwrap() {
-                                let body = data.get(0).unwrap();
-                                if let &WeechatData::Char(ref highlight) = body.get("highlight").unwrap() {
-                                    if highlight == &'\u{1}' {
-                                        println_stderr!("Got message: {:?}", body.get("message").unwrap());
+        match tx.send(buffer) {
+            Ok(_) => loop {
+                match rx.try_recv() {
+                    Ok(res) => match res {
+                        Ok(message) => {
+                            if message.id == "_buffer_line_added" {
+                                if let &WeechatData::Hdata(_, _, ref data) = message.data.get(0).unwrap() {
+                                    let body = data.get(0).unwrap();
+                                    if let &WeechatData::Char(ref highlight) = body.get("highlight").unwrap() {
+                                        if highlight == &'\u{1}' {
+                                            println_stderr!("Got message: {:?}", body.get("message").unwrap());
+                                        }
                                     }
                                 }
                             }
+                        },
+                        Err(e) => {
+                            println_stderr!("error parsing {:?}", e);
+                            break;
                         }
                     },
-                    Err(e) => {
-                        println_stderr!("error parsing {:?}", e);
+                    Err(_) => {
                         break;
                     }
-                },
-                Err(e) => {
-                    break;
                 }
+            },
+            Err(e) => {
+                println_stderr!("error parsing {:?}", e);
+                break;
             }
         }
+
     }
 
     println_stderr!("done reading");
