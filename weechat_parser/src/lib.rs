@@ -1,7 +1,3 @@
-#![feature(convert)]
-#![feature(drain)]
-#![feature(str_match_indices)]
-
 extern crate byteorder;
 extern crate flate2;
 
@@ -122,10 +118,10 @@ fn parse_data(buffer: &[u8], length: usize) -> Result<Vec<WeechatData>, WeechatP
     Ok(acc)
 }
 
-fn parse_element(element_type: &String,
+fn parse_element(element_type: &str,
                  buffer: &[u8])
                  -> Result<(usize, WeechatData), WeechatParseError> {
-    match element_type.as_str() {
+    match element_type {
         "chr" => {
             let value = try!(read_u8(&buffer));
             let input_char = try!(char::from_u32(value as u32).ok_or((MalformedBinaryParse,
@@ -173,7 +169,9 @@ fn parse_element(element_type: &String,
             let (len, value) = try!(read_array(&buffer));
             Ok((len, WeechatData::Array(value)))
         }
-        _ => fail!((UnknownType, "Got unfamiliar type", element_type.to_owned())),
+        _ => Err(WeechatParseError::from((UnknownType,
+                                          "Got unfamiliar type",
+                                          element_type.to_owned()))),
     }
 }
 
@@ -198,7 +196,7 @@ fn read_i32(buffer: &[u8]) -> Result<i32, WeechatParseError> {
 
 fn read_long(buffer: &[u8]) -> Result<(usize, i64), WeechatParseError> {
     let (end, value) = try!(read_string_8bit_length(&buffer));
-    let long = try!(i64::from_str_radix(value.as_str(), 10));
+    let long = try!(i64::from_str_radix(&value, 10));
     Ok((end, long))
 }
 
@@ -215,7 +213,10 @@ fn read_time(buffer: &[u8]) -> Result<(usize, String), WeechatParseError> {
 }
 
 fn read_hdata(buffer: &[u8])
-              -> Result<(usize, String, Vec<WeechatData>, Vec<HashMap<String, WeechatData>>),
+              -> Result<(usize,
+                         String,
+                         Vec<WeechatData>,
+                         Vec<HashMap<String, WeechatData>>),
                         WeechatParseError> {
     let mut position = 0;
     let (name_len, name_raw) = try!(read_string_32bit_length(&buffer));
@@ -235,14 +236,14 @@ fn read_hdata(buffer: &[u8])
     }
     let mut pointers = Vec::with_capacity(pointer_count * row_count);
     let mut acc = Vec::with_capacity(row_count);
-    for _ in (0..row_count) {
-        for _ in (0..pointer_count) {
+    for _ in 0..row_count {
+        for _ in 0..pointer_count {
             let (ptr_len, ptr_value) = try!(read_pointer(&buffer[position..]));
             position += ptr_len;
             pointers.push(WeechatData::Pointer(ptr_value));
         }
         let mut row_data = HashMap::new();
-        for &(ref key_name, ref value_type) in keys.iter() {
+        for &(ref key_name, ref value_type) in &keys {
             let (len, value) = try!(parse_element(value_type, &buffer[position..]));
             position += len;
             row_data.insert(key_name.clone(), value);
@@ -282,7 +283,7 @@ fn read_array(buffer: &[u8]) -> Result<(usize, Vec<WeechatData>), WeechatParseEr
     let count = try!(read_i32(&buffer[position..]));
     position += 4;
     let mut acc = Vec::<WeechatData>::with_capacity(count as usize);
-    match array_type.as_str() {
+    match array_type.as_ref() {
         "str" => {
             for _ in 0..count {
                 let (len, value) = try!(read_string_32bit_length(&buffer[position..]));
@@ -336,16 +337,16 @@ fn get_raw_data(buffer: &[u8]) -> Result<Vec<u8>, WeechatParseError> {
 fn test_parse_test_data() {
     // Data as returned by the test command in weechat:
     let data = [0, 0, 0, 145, 1, 120, 156, 251, 255, 255, 255, 255, 228, 140,
-                 34, 199, 204, 188, 18, 6, 198, 71, 14, 64, 234, 255, 63, 217,
-                 3, 57, 249, 121, 92, 134, 70, 198, 38, 166, 102, 230, 22, 150,
-                 6, 64, 30, 183, 46, 130, 91, 92, 82, 196, 192, 192, 192, 145,
-                 168, 0, 100, 100, 230, 165, 67, 184, 12, 64, 10, 104, 212, 255,
-                 164, 210, 52, 32, 135, 13, 72, 165, 165, 22, 1, 73, 144, 88,
-                 65, 73, 17, 7, 72, 123, 98, 82, 114, 10, 144, 205, 104, 80, 146,
-                 153, 203, 101, 104, 108, 100, 104, 105, 9, 50, 51, 177, 168, 8,
-                 98, 6, 19, 16, 51, 3, 21, 129, 152, 41, 169, 64, 97, 144, 163,
-                 128, 66, 64, 92, 205, 192, 192, 120, 2, 200, 20, 5, 0, 59, 212,
-                 56, 52];
+                34, 199, 204, 188, 18, 6, 198, 71, 14, 64, 234, 255, 63, 217,
+                3, 57, 249, 121, 92, 134, 70, 198, 38, 166, 102, 230, 22, 150,
+                6, 64, 30, 183, 46, 130, 91, 92, 82, 196, 192, 192, 192, 145,
+                168, 0, 100, 100, 230, 165, 67, 184, 12, 64, 10, 104, 212, 255,
+                164, 210, 52, 32, 135, 13, 72, 165, 165, 22, 1, 73, 144, 88,
+                65, 73, 17, 7, 72, 123, 98, 82, 114, 10, 144, 205, 104, 80, 146,
+                153, 203, 101, 104, 108, 100, 104, 105, 9, 50, 51, 177, 168, 8,
+                98, 6, 19, 16, 51, 3, 21, 129, 152, 41, 169, 64, 97, 144, 163,
+                128, 66, 64, 92, 205, 192, 192, 120, 2, 200, 20, 5, 0, 59, 212,
+                56, 52];
 
     let message = WeechatMessage::from_raw_message(&data).unwrap();
     assert_eq!(message.id, "test".to_owned());
@@ -362,14 +363,14 @@ fn test_parse_test_data() {
     assert_eq!(message.data.get(10), Some(&WeechatData::Pointer("0x1234abcd".to_owned())));
     assert_eq!(message.data.get(11), Some(&WeechatData::Pointer("0x0".to_owned())));
     assert_eq!(message.data.get(12), Some(&WeechatData::Time("1321993456".to_owned())));
-    if let &WeechatData::Array(ref test_string_array) = message.data.get(13).unwrap() {
+    if let WeechatData::Array(ref test_string_array) = *message.data.get(13).unwrap() {
         assert_eq!(test_string_array.len(), 2);
         assert_eq!(test_string_array.get(0), Some(&WeechatData::String("abc".to_owned())));
         assert_eq!(test_string_array.get(1), Some(&WeechatData::String("de".to_owned())));
     } else {
         panic!("got wrong type in test element 13 (expected Array)");
     }
-    if let &WeechatData::Array(ref test_string_array) = message.data.get(14).unwrap() {
+    if let WeechatData::Array(ref test_string_array) = *message.data.get(14).unwrap() {
         assert_eq!(test_string_array.len(), 3);
         assert_eq!(test_string_array.get(0), Some(&WeechatData::Int(123)));
         assert_eq!(test_string_array.get(1), Some(&WeechatData::Int(456)));

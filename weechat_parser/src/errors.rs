@@ -5,10 +5,11 @@ use std::io::Error as IOError;
 use std::num::ParseIntError;
 use byteorder::Error as ByteOrderError;
 
+
 #[macro_export]
 macro_rules! fail {
     ($expr:expr) => (
-        return Err(::std::convert::From::from($expr));
+        return Err(::std::convert::From::from($expr))
     )
 }
 
