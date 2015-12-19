@@ -1,5 +1,3 @@
-#![feature(socket_timeout)]
-
 extern crate weechat_parser;
 
 use std::io::prelude::*;
