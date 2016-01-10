@@ -92,7 +92,7 @@ fn start_parser(input: Receiver<Vec<u8>>,
                             buffer.drain(..message_length as usize).collect();
                         let message = try_send_error!(output,
                                                       WeechatMessage::from_raw_message(&message_buffer));
-                        output.send(Ok(message)).unwrap();
+                        output.send(Ok(message)).unwrap()
                     } else {
                         break;
                     }

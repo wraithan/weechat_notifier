@@ -1,10 +1,8 @@
 extern crate weechat_parser;
-extern crate timebomb;
 
 use std::io::prelude::*;
 use std::fs::File;
 use std::sync::mpsc::Receiver;
-use timebomb::timeout_ms;
 use weechat_parser::{WeechatData, WeechatMessage};
 use weechat_parser::errors::WeechatParseError;
 
@@ -52,35 +50,28 @@ fn simple_session_test() {
 
 #[test]
 fn blob_session() {
-    timeout_ms(|| {
-                   let mut f = File::open("./tests/fodder/simple.dat").unwrap();
-                   let mut buffer = vec![];
-                   f.read_to_end(&mut buffer).unwrap();
+    let mut f = File::open("./tests/fodder/simple.dat").unwrap();
+    let mut buffer = vec![];
+    f.read_to_end(&mut buffer).unwrap();
 
-                   let (tx, rx) = weechat_parser::new();
-                   tx.send(buffer).unwrap();
+    let (tx, rx) = weechat_parser::new();
+    tx.send(buffer).unwrap();
 
-                   validate_session(rx)
-               },
-               2000)
+    validate_session(rx)
 }
 
 #[test]
 fn single_byte_session() {
-    timeout_ms(|| {
-                   let mut f = File::open("./tests/fodder/simple.dat").unwrap();
-                   let mut buffer = vec![];
-                   f.read_to_end(&mut buffer).unwrap();
+    let mut f = File::open("./tests/fodder/simple.dat").unwrap();
+    let mut buffer = vec![];
+    f.read_to_end(&mut buffer).unwrap();
 
-                   let (tx, rx) = weechat_parser::new();
-                   for item in buffer {
-                       tx.send(vec![item]).unwrap();
-                   }
+    let (tx, rx) = weechat_parser::new();
+    for item in buffer {
+        tx.send(vec![item]).unwrap();
+    }
 
-                   validate_session(rx)
-               },
-               2000)
-
+    validate_session(rx)
 }
 
 fn validate_session(rx: Receiver<Result<WeechatMessage, WeechatParseError>>) {
@@ -155,4 +146,8 @@ fn validate_session(rx: Receiver<Result<WeechatMessage, WeechatParseError>>) {
     } else {
         panic!("unexpected type for third message");
     }
+
+    // Two more messages that don't get processed by tests because they are basically the same as the above.
+    rx.recv().unwrap().unwrap();
+    rx.recv().unwrap().unwrap();
 }
